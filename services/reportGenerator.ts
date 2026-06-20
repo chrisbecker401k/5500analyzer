@@ -1,6 +1,26 @@
 import { canCalculateMetric } from "@/services/compliance";
 import type { CalculatedMetrics, PlanAnalysis, ReportFile } from "@/types/plan";
 
+function reportQuery(planAnalysis: PlanAnalysis, calculatedMetrics: CalculatedMetrics) {
+  const params = new URLSearchParams({
+    companyName: planAnalysis.companyName,
+    planName: planAnalysis.planName,
+    planYear: String(planAnalysis.planYear),
+    ein: planAnalysis.ein,
+    planNumber: planAnalysis.planNumber,
+    endingAssets: String(planAnalysis.endingAssets ?? ""),
+    participantsWithBalances: String(planAnalysis.participantsWithBalances ?? ""),
+    recordkeeper: planAnalysis.recordkeeper ?? "Not visible in filing",
+    advisor: planAnalysis.advisor ?? "Not visible in filing",
+    auditor: planAnalysis.auditor ?? "Not visible in filing",
+    assetGrowthPercent: String(calculatedMetrics.assetGrowthPercent ?? ""),
+    averageBalance: String(calculatedMetrics.averageBalance ?? ""),
+    adminFeeBps: String(calculatedMetrics.adminFeeBps ?? "")
+  });
+
+  return params.toString();
+}
+
 export function calculateMetrics(planAnalysis: PlanAnalysis): CalculatedMetrics {
   const {
     beginningAssets,
@@ -41,14 +61,13 @@ export async function generateDocxReport(
   planAnalysis: PlanAnalysis,
   calculatedMetrics: CalculatedMetrics
 ): Promise<ReportFile> {
-  void calculatedMetrics;
   await new Promise((resolve) => setTimeout(resolve, 600));
   return {
     id: `docx-${planAnalysis.id}`,
     planAnalysisId: planAnalysis.id,
     type: "docx",
     fileName: `${planAnalysis.companyName.toLowerCase().replace(/\W+/g, "_")}_401k_plan_review.docx`,
-    url: "/mock-reports/company_401k_plan_review.docx",
+    url: `/api/reports/docx?${reportQuery(planAnalysis, calculatedMetrics)}`,
     createdAt: new Date().toISOString()
   };
 }
@@ -57,14 +76,13 @@ export async function generatePdfReport(
   planAnalysis: PlanAnalysis,
   calculatedMetrics: CalculatedMetrics
 ): Promise<ReportFile> {
-  void calculatedMetrics;
   await new Promise((resolve) => setTimeout(resolve, 600));
   return {
     id: `pdf-${planAnalysis.id}`,
     planAnalysisId: planAnalysis.id,
     type: "pdf",
     fileName: `${planAnalysis.companyName.toLowerCase().replace(/\W+/g, "_")}_401k_plan_review.pdf`,
-    url: "/mock-reports/company_401k_plan_review.pdf",
+    url: `/api/reports/pdf?${reportQuery(planAnalysis, calculatedMetrics)}`,
     createdAt: new Date().toISOString()
   };
 }

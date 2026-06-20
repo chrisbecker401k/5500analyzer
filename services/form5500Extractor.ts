@@ -6,10 +6,19 @@ export async function analyzeForm5500(file: File): Promise<PlanAnalysis> {
   // in the filing package, and label gaps instead of guessing.
   await new Promise((resolve) => setTimeout(resolve, 900));
   const base = mockPlanAnalyses[0];
+  const companyName = file.name
+    .replace(/\.pdf$/i, "")
+    .replace(/form\s*5500/gi, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const sponsor = companyName || "Uploaded Plan Sponsor";
+
   return {
     ...base,
     id: `analysis-${Date.now()}`,
-    companyName: file.name.replace(/\.pdf$/i, "").replace(/[_-]/g, " ") || base.companyName,
+    companyName: sponsor,
+    planName: `${sponsor} 401(k) Plan`,
     status: "Ready",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

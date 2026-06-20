@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, FileText, Save, ScrollText } from "lucide-react";
+import { ArrowRight, CheckCircle2, Download, FileText, Save, ScrollText } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { AnalysisSummaryPanel } from "@/components/AnalysisSummaryPanel";
 import { DetectedDocumentCard } from "@/components/DetectedDocumentCard";
@@ -15,15 +15,20 @@ import type { PlanAnalysis, ReportFile } from "@/types/plan";
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<PlanAnalysis | null>(null);
-  const [progress, setProgress] = useState(60);
+  const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [files, setFiles] = useState<ReportFile[]>([]);
   const metrics = useMemo(() => (analysis ? calculateMetrics(analysis) : null), [analysis]);
 
   async function runAnalysis() {
+    if (!file) return;
     setRunning(true);
+    setFiles([]);
+    setProgress(35);
+    await new Promise((resolve) => setTimeout(resolve, 350));
     setProgress(72);
-    const result = await analyzeForm5500(file ?? new File(["mock"], "northwind_group_form_5500.pdf"));
+    const result = await analyzeForm5500(file);
     setProgress(100);
     setAnalysis(result);
     setRunning(false);
@@ -31,8 +36,17 @@ export default function UploadPage() {
 
   async function generateReport() {
     if (!analysis || !metrics) return;
+    setGenerating(true);
     const generated = await Promise.all([generatePdfReport(analysis, metrics), generateDocxReport(analysis, metrics)]);
     setFiles(generated);
+    setGenerating(false);
+  }
+
+  function handleFileSelection(selectedFile: File) {
+    setFile(selectedFile);
+    setAnalysis(null);
+    setFiles([]);
+    setProgress(15);
   }
 
   return (
@@ -43,7 +57,7 @@ export default function UploadPage() {
         <section className="card p-6">
           <h2 className="text-xl font-bold text-slate-900">Upload Form 5500 Package</h2>
           <div className="mt-5">
-            <UploadDropzone onFile={setFile} />
+            <UploadDropzone onFile={handleFileSelection} />
           </div>
           {file ? <p className="mt-4 text-sm font-semibold text-everhart-blue">Selected: {file.name}</p> : null}
           <h2 className="mt-8 text-xl font-bold text-slate-900">Detected Documents</h2>
@@ -79,8 +93,15 @@ export default function UploadPage() {
               {files.length ? (
                 <div className="mt-4 flex gap-3">
                   {files.map((generated) => (
-                    <a key={generated.id} href={generated.url} className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-everhart-blue">
-                      {generated.type.toUpperCase()} ready
+                    <a
+                      key={generated.id}
+                      href={generated.url}
+                      download={generated.fileName}
+                      target="_blank"
+                      className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-everhart-blue"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download {generated.type.toUpperCase()}
                     </a>
                   ))}
                 </div>
@@ -97,13 +118,13 @@ export default function UploadPage() {
             Save Draft
           </button>
           {analysis ? (
-            <button onClick={generateReport} className="inline-flex items-center gap-2 rounded-lg bg-everhart-orange px-8 py-3 font-bold text-white shadow-soft">
-              Generate Report
+            <button onClick={generateReport} disabled={generating} className="inline-flex items-center gap-2 rounded-lg bg-everhart-orange px-8 py-3 font-bold text-white shadow-soft disabled:opacity-70">
+              {generating ? "Generating..." : files.length ? "Regenerate Report" : "Generate Report"}
               <ArrowRight className="h-5 w-5" />
             </button>
           ) : (
-            <button onClick={runAnalysis} disabled={running} className="inline-flex items-center gap-2 rounded-lg bg-everhart-blue px-8 py-3 font-bold text-white shadow-soft disabled:opacity-70">
-              {running ? "Running..." : "Run Analysis"}
+            <button onClick={runAnalysis} disabled={running || !file} className="inline-flex items-center gap-2 rounded-lg bg-everhart-blue px-8 py-3 font-bold text-white shadow-soft disabled:opacity-50">
+              {running ? "Running..." : file ? "Run Analysis" : "Select a PDF to Analyze"}
               <ArrowRight className="h-5 w-5" />
             </button>
           )}

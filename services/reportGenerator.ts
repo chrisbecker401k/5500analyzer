@@ -8,6 +8,7 @@ function reportQuery(planAnalysis: PlanAnalysis, calculatedMetrics: CalculatedMe
     planYear: String(planAnalysis.planYear),
     ein: planAnalysis.ein,
     planNumber: planAnalysis.planNumber,
+    beginningAssets: String(planAnalysis.beginningAssets ?? ""),
     endingAssets: String(planAnalysis.endingAssets ?? ""),
     participantsWithBalances: String(planAnalysis.participantsWithBalances ?? ""),
     recordkeeper: planAnalysis.recordkeeper ?? "Not visible in filing",
@@ -17,6 +18,27 @@ function reportQuery(planAnalysis: PlanAnalysis, calculatedMetrics: CalculatedMe
     averageBalance: String(calculatedMetrics.averageBalance ?? ""),
     adminFeeBps: String(calculatedMetrics.adminFeeBps ?? "")
   });
+  if (planAnalysis.recordkeepingFees !== undefined && planAnalysis.recordkeepingFees !== null) {
+    params.set("recordkeepingFees", String(planAnalysis.recordkeepingFees));
+  }
+  if (planAnalysis.advisoryFees !== undefined && planAnalysis.advisoryFees !== null) {
+    params.set("advisoryFees", String(planAnalysis.advisoryFees));
+  }
+  if (planAnalysis.netInvestmentGain !== undefined && planAnalysis.netInvestmentGain !== null) {
+    params.set("netInvestmentGain", String(planAnalysis.netInvestmentGain));
+  }
+  if (planAnalysis.mutualFundAssets !== undefined && planAnalysis.mutualFundAssets !== null) {
+    params.set("mutualFundAssets", String(planAnalysis.mutualFundAssets));
+  }
+  if (planAnalysis.stableValueAssets !== undefined && planAnalysis.stableValueAssets !== null) {
+    params.set("stableValueAssets", String(planAnalysis.stableValueAssets));
+  }
+  if (planAnalysis.planDesignSignals?.length) {
+    params.set("planDesignSignals", planAnalysis.planDesignSignals.join("|"));
+  }
+  if (planAnalysis.investmentMenuSignals?.length) {
+    params.set("investmentMenuSignals", planAnalysis.investmentMenuSignals.join("|"));
+  }
 
   return params.toString();
 }

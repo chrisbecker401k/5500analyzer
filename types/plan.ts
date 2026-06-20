@@ -40,6 +40,16 @@ export type PlanAnalysis = {
   advisor: string | null;
   auditor: string | null;
   trustee: string | null;
+  recordkeepingFees?: number | null;
+  advisoryFees?: number | null;
+  investmentGain?: number | null;
+  netInvestmentGain?: number | null;
+  stableValueAssets?: number | null;
+  mutualFundAssets?: number | null;
+  targetDateAssets?: number | null;
+  planDesignSignals?: string[];
+  investmentMenuSignals?: string[];
+  sourceFields?: Record<string, string>;
   status: PlanStatus;
   createdAt: string;
   updatedAt: string;

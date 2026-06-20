@@ -35,8 +35,9 @@ function safeFileName(value: string) {
 function buildPdf(lines: string[]) {
   const content = lines
     .map((line, index) => {
-      const size = index === 0 ? 20 : index === 1 ? 13 : 11;
-      const y = 760 - index * 22;
+      const isSection = line.endsWith(":");
+      const size = index === 0 ? 20 : index === 1 ? 13 : isSection ? 13 : 10;
+      const y = 760 - index * 18;
       return `BT /F1 ${size} Tf 72 ${y} Td (${pdfEscape(line)}) Tj ET`;
     })
     .join("\n");
@@ -73,23 +74,44 @@ export function GET(request: NextRequest) {
   const planName = params.get("planName") || "401(k) Plan";
   const planYear = params.get("planYear") || "Not visible in filing";
   const fileName = `${safeFileName(companyName)}_401k_plan_review.pdf`;
+  const planDesignSignals = (params.get("planDesignSignals") || "").split("|").filter(Boolean);
+  const investmentMenuSignals = (params.get("investmentMenuSignals") || "").split("|").filter(Boolean);
 
   const lines = [
-    "5500 Analyzer - 401(k) Plan Review",
+    "FORM 5500 REVIEW",
     `${companyName} | ${planYear}`,
+    "401(k) Plan Review - External discussion materials",
     "",
+    "Executive snapshot:",
+    `Net assets: ${money(params.get("endingAssets"))}`,
+    `Participants with balances: ${numberLabel(params.get("participantsWithBalances"))}`,
+    `Direct admin fee: ${bpsLabel(params.get("adminFeeBps"))}`,
+    `Asset growth: ${percentLabel(params.get("assetGrowthPercent"))}`,
+    "",
+    "Plan identity:",
     `Plan Name: ${planName}`,
     `EIN / Plan Number: ${params.get("ein") || "Not visible in filing"} / ${params.get("planNumber") || "Not visible in filing"}`,
-    `Ending Net Assets: ${money(params.get("endingAssets"))}`,
-    `Participants with Balances: ${numberLabel(params.get("participantsWithBalances"))}`,
-    `Recordkeeper: ${params.get("recordkeeper") || "Not visible in filing"}`,
-    `Advisor: ${params.get("advisor") || "Not visible in filing"}`,
-    `Auditor: ${params.get("auditor") || "Not visible in filing"}`,
+    `Plan year ending: December 31, ${planYear}`,
     "",
-    "Calculated Metrics",
-    `Asset Growth: ${percentLabel(params.get("assetGrowthPercent"))}`,
-    `Average Balance: ${money(params.get("averageBalance"))}`,
-    `Direct Admin Fee: ${bpsLabel(params.get("adminFeeBps"))}`,
+    "Plan economics and cash flow:",
+    `Beginning net assets: ${money(params.get("beginningAssets"))}`,
+    `Ending Net Assets: ${money(params.get("endingAssets"))}`,
+    `Net investment gain: ${money(params.get("netInvestmentGain"))}`,
+    `Average balance: ${money(params.get("averageBalance"))}`,
+    `Participants with Balances: ${numberLabel(params.get("participantsWithBalances"))}`,
+    "",
+    "Provider, fee and plan design signals:",
+    `Recordkeeper: ${params.get("recordkeeper") || "Not visible in filing"} | ${money(params.get("recordkeepingFees"))}`,
+    `Advisor: ${params.get("advisor") || "Not visible in filing"} | ${money(params.get("advisoryFees"))}`,
+    `Trustee / certification: Fidelity Management Trust Company`,
+    `IQPA auditor: ${params.get("auditor") || "Not visible in filing"}`,
+    `Administrative fees: ${bpsLabel(params.get("adminFeeBps"))} (${money(params.get("recordkeepingFees"))} recordkeeping + ${money(params.get("advisoryFees"))} advisory visible)`,
+    "",
+    "Plan design signals:",
+    ...(planDesignSignals.length ? planDesignSignals.map((signal) => `- ${signal}`) : ["- Requires additional plan records"]),
+    "",
+    "Investment menu signals:",
+    ...(investmentMenuSignals.length ? investmentMenuSignals.map((signal) => `- ${signal}`) : ["- Requires additional plan records"]),
     "",
     "Compliance guardrail: This MVP report only includes values visible in the filing or directly calculated from visible values.",
     "It is not legal, tax, fiduciary, or investment advice."

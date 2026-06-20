@@ -1,7 +1,19 @@
 import { mockPlanAnalyses } from "@/data/mockData";
 import type { PlanAnalysis } from "@/types/plan";
+import { extractPlanAnalysisFromText } from "@/services/form5500FieldMapper";
 
 export async function analyzeForm5500(file: File): Promise<PlanAnalysis> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch("/api/analyze", {
+    method: "POST",
+    body: formData
+  });
+
+  if (response.ok) {
+    return response.json() as Promise<PlanAnalysis>;
+  }
+
   // Replace this mock with a secure extraction API call. Keep outputs limited to values visible
   // in the filing package, and label gaps instead of guessing.
   await new Promise((resolve) => setTimeout(resolve, 900));
@@ -36,23 +48,23 @@ export function detectSchedules(text: string) {
 }
 
 export function extractPlanIdentity(text: string) {
-  void text;
-  return { sponsor: "Northwind Group", planName: "Northwind Group 401(k) Plan" };
+  const analysis = extractPlanAnalysisFromText(text);
+  return { sponsor: analysis.companyName, planName: analysis.planName };
 }
 
 export function extractPlanEconomics(text: string) {
-  void text;
-  return { endingAssets: 125430000, beginningAssets: 116800000 };
+  const analysis = extractPlanAnalysisFromText(text);
+  return { endingAssets: analysis.endingAssets, beginningAssets: analysis.beginningAssets };
 }
 
 export function extractParticipants(text: string) {
-  void text;
-  return { participantsWithBalances: 1245, activeParticipants: 1108 };
+  const analysis = extractPlanAnalysisFromText(text);
+  return { participantsWithBalances: analysis.participantsWithBalances, activeParticipants: analysis.activeParticipants };
 }
 
 export function extractProviders(text: string) {
-  void text;
-  return { recordkeeper: "Fidelity", advisor: "Everhart Advisors" };
+  const analysis = extractPlanAnalysisFromText(text);
+  return { recordkeeper: analysis.recordkeeper, advisor: analysis.advisor };
 }
 
 export function extractPlanDesign(text: string) {

@@ -89,6 +89,20 @@ export default function UploadPage() {
                 <p><span className="block text-slate-500">Participants</span><strong>{formatNumber(analysis.participantsWithBalances)}</strong></p>
                 <p><span className="block text-slate-500">Admin Fee</span><strong>{metrics?.adminFeeBps?.toFixed(1)} bps</strong></p>
                 <p><span className="block text-slate-500">Average Balance</span><strong>{formatCurrency(metrics?.averageBalance ?? null)}</strong></p>
+                <p><span className="block text-slate-500">Beginning Assets</span><strong>{formatCurrency(analysis.beginningAssets)}</strong></p>
+                <p><span className="block text-slate-500">Total Contributions</span><strong>{formatCurrency(analysis.totalContributions)}</strong></p>
+                <p><span className="block text-slate-500">Benefits Paid</span><strong>{formatCurrency(analysis.benefitsPaid)}</strong></p>
+                <p><span className="block text-slate-500">Recordkeeper</span><strong>{analysis.recordkeeper ?? "Not visible in filing"}</strong></p>
+                <p><span className="block text-slate-500">Advisor</span><strong>{analysis.advisor ?? "Not visible in filing"}</strong></p>
+                <p><span className="block text-slate-500">Auditor</span><strong>{analysis.auditor ?? "Not visible in filing"}</strong></p>
+              </div>
+              <div className="mt-5 rounded-lg bg-white/75 p-4">
+                <p className="text-sm font-bold text-slate-900">Field mapping used</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  {Object.entries(analysis.sourceFields ?? {}).map(([field, source]) => (
+                    <p key={field}><span className="font-semibold text-slate-800">{field}:</span> {source}</p>
+                  ))}
+                </div>
               </div>
               {files.length ? (
                 <div className="mt-4 flex gap-3">

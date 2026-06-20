@@ -5,6 +5,7 @@ node_modules
 .pnpm-home
 .vercel-home
 .cache
+tmp/
 out
 dist
 .env*

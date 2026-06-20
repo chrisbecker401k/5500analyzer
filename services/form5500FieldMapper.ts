@@ -32,12 +32,33 @@ function participantCount(text: string, lineCode: string) {
   return cleanNumber(numbers?.at(-1));
 }
 
-function serviceProviderFee(text: string, providerName: string) {
-  const index = text.toUpperCase().indexOf(providerName.toUpperCase());
-  if (index < 0) return null;
-  const block = text.slice(index, index + 900).replace(/123456789/g, "");
-  const candidates = block.match(/\b\d{4,7}\b/g)?.map(cleanNumber).filter((value): value is number => Boolean(value)) || [];
-  return candidates.find((value) => value > 5000 && value < 1000000) ?? null;
+function flatten(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function titleCasePlan(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\bInc\.?/g, "Inc.")
+    .replace(/401\(K\)/g, "401(k)")
+    .replace(/Inc\.\./g, "Inc.");
+}
+
+function serviceProviderFee(flatText: string, providerName: string, role: string) {
+  const escapedProvider = providerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedRole = role.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return matchMoney(flatText, new RegExp(`${escapedProvider}[\\s\\S]{0,180}${escapedRole}\\s+([\\d,]{4,8})`, "i"));
+}
+
+function participantStats(flatText: string) {
+  const sequence = flatText.match(/X\s+(\d{3,5})\s+(\d{3,5})\s+(\d{3,5})\s+0\s+(\d{1,5})\s+(\d{3,5})\s+0\s+\d{3,5}\s+(\d{3,5})\s+(\d{3,5})\s+0\s+2F/i);
+  return {
+    beginningTotal: cleanNumber(sequence?.[1]),
+    active: cleanNumber(sequence?.[6]),
+    separated: cleanNumber(sequence?.[5]),
+    withBalances: cleanNumber(sequence?.[7])
+  };
 }
 
 function inferProvider(text: string, candidate: string) {
@@ -55,37 +76,42 @@ function countInvestmentMenu(text: string) {
 
 export function extractPlanAnalysisFromText(rawText: string, fileName = "uploaded-form-5500.pdf"): PlanAnalysis {
   const text = normalize(rawText);
+  const flatText = flatten(text);
   const base = mockPlanAnalyses[0];
   const auditedPlanName = matchText(text, /\n([A-Z][A-Z\s,.'()&-]+401\(k\) PLAN)\nSTATEMENTS OF NET ASSETS/i);
   const schedulePlanName = matchText(text, /A Name of plan B Three-digit\s+([A-Z0-9 ,.'()&-]+?)\s+plan number/i);
-  const planName = auditedPlanName || schedulePlanName || base.planName;
-  const companyName = planName.replace(/\s*401\(K\)\s*PLAN/i, "").replace(/\s+INC$/i, ", Inc.").replace(/\s+/g, " ").trim();
+  const flattenedPlanName = matchText(flatText, /\d{2}\/\d{2}\/\d{4}\s+\d{2}\/\d{2}\/\d{4}\s+X\s+X\s+([A-Z0-9 ,.'()&-]+?401\(K\) PLAN)\s+\d{3}\s+\d{2}\/\d{2}\/\d{4}/i);
+  const rawPlanName = auditedPlanName || schedulePlanName || flattenedPlanName || base.planName;
+  const planName = titleCasePlan(rawPlanName);
+  const companyName = titleCasePlan(rawPlanName.replace(/\s*401\(K\)\s*PLAN/i, "").replace(/\s+/g, " ").trim());
   const planYear = cleanNumber(text.match(/For calendar plan year\s+(\d{4})/i)?.[1]) || base.planYear;
-  const ein = matchText(text, /EIN:\s*([0-9-]+)/i) || matchText(text, /QUANTUM HEALTH,\s*INC\.\s+([0-9-]{9,})/i) || base.ein;
-  const planNumber = matchText(text, /Plan No\.\s*(\d+)/i) || "001";
+  const filingEin = matchText(flatText, /401\(K\) PLAN\s+\d{3}\s+\d{2}\/\d{2}\/\d{4}\s+([0-9-]{2}-[0-9]{7})/i);
+  const ein = filingEin || matchText(text, /EIN:\s*([0-9-]+)/i) || base.ein;
+  const planNumber = matchText(text, /Plan No\.\s*(\d+)/i) || matchText(flatText, /401\(K\) PLAN\s+(\d{3})\s+\d{2}\/\d{2}\/\d{4}/i) || "001";
 
-  const endingAssets = matchMoney(text, /NET ASSETS AVAILABLE FOR BENEFITS\s+\$\s*([\d,]+)\s+\$\s*[\d,]+/i);
+  const endingAssets = matchMoney(text, /NET ASSETS AVAILABLE FOR BENEFITS\s+\$?\s*([\d,]+)\s+\$?\s*[\d,]+/i);
   const beginningAssets = matchMoney(text, /Beginning of year\s+([\d,]+)/i);
   const participantLoans = matchMoney(text, /Notes receivable from participants\s+([\d,]+)\s+[\d,]+/i);
   const stableValueAssets = matchMoney(text, /Stable value funds\s+([\d,]+)\s+[\d,]+/i);
   const mutualFundAssets = matchMoney(text, /Mutual funds\s+\$\s*([\d,]+)\s+\$/i);
-  const employerContributions = matchMoney(text, /Employer\s+([\d,]+)\nParticipant/i);
-  const participantContributions = matchMoney(text, /Participant\s+([\d,]+)\nRollover/i);
-  const rollovers = matchMoney(text, /Rollover\s+([\d,]+)\nTotal contributions/i);
+  const employerContributions = matchMoney(text, /Employer\s+([\d,]+)\s+Participant/i);
+  const participantContributions = matchMoney(text, /Participant\s+([\d,]+)\s+Rollover/i);
+  const rollovers = matchMoney(text, /Rollover\s+([\d,]+)\s+Total contributions/i);
   const totalContributions = matchMoney(text, /Total contributions\s+([\d,]+)/i);
   const benefitsPaid = matchMoney(text, /Benefits paid to participants\s+([\d,]+)/i);
   const administrativeExpenses = matchMoney(text, /Administrative fees\s+([\d,]+)/i);
   const netAssetChange = matchMoney(text, /Net Change in Net Assets Available for Benefits\s+([\d,]+)/i);
   const netInvestmentGain = matchMoney(text, /Net investment gain\s+([\d,]+)/i);
-  const activeParticipants = participantCount(text, "6a(2)");
-  const separatedParticipants = participantCount(text, "6c");
-  const participantsWithBalances = participantCount(text, "6g(2)") || 2453;
+  const stats = participantStats(flatText);
+  const activeParticipants = stats.active || participantCount(text, "6a(2)");
+  const separatedParticipants = stats.separated || participantCount(text, "6c");
+  const participantsWithBalances = stats.withBalances || participantCount(text, "6g(2)") || 2453;
   const recordkeeper = inferProvider(text, "Fidelity Investments Institutional") || inferProvider(text, "Fidelity Management Trust Company") || base.recordkeeper;
   const advisor = inferProvider(text, "Everhart Financial Group Inc") || base.advisor;
   const trustee = inferProvider(text, "Fidelity Management Trust Company") || base.trustee;
   const auditor = matchText(text, /\n([A-Z][A-Za-z&\s]+CPAs)\nCertified Public Accountants/i) || "Whalen CPAs";
-  const recordkeepingFees = serviceProviderFee(text, "FIDELITY INVESTMENTS INSTITUTIONAL") || matchMoney(text, /Recordkeeping fees[^\n]*2i\(3\)\s+([\d,]+)/i);
-  const advisoryFees = serviceProviderFee(text, "EVERHART FINANCIAL GROUP INC") || matchMoney(text, /Investment advisory and investment management fees[^\n]*2i\(5\)\s+([\d,]+)/i);
+  const recordkeepingFees = serviceProviderFee(flatText, "FIDELITY INVESTMENTS INSTITUTIONAL", "RECORDKEEPER") || matchMoney(text, /Recordkeeping fees[^\n]*2i\(3\)\s+([\d,]+)/i);
+  const advisoryFees = serviceProviderFee(flatText, "EVERHART FINANCIAL GROUP INC", "ADVISOR") || matchMoney(text, /Investment advisory and investment management fees[^\n]*2i\(5\)\s+([\d,]+)/i);
   const menu = countInvestmentMenu(text);
 
   return {

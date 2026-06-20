@@ -95,11 +95,11 @@ function paragraph(page: CommandPage, value: string, x: number, y: number, maxCh
 }
 
 function header(page: CommandPage, title: string, pageNumber: number) {
-  text(page, "5500 Analyzer", 42, 744, 11, "F2", BLUE);
+  text(page, "Everhart Advisors", 42, 744, 11, "F2", BLUE);
   text(page, "401(k) Report", 446, 744, 9, "F2", BLUE);
   text(page, title.toUpperCase(), 42, 706, 16, "F2", BLUE);
   line(page, 42, 690, 570, 690);
-  text(page, `External discussion materials ${pageNumber}`, 420, 38, 8, "F1", MUTED);
+  text(page, `401(k) Report  |  External discussion materials ${pageNumber}`, 342, 38, 8, "F1", MUTED);
 }
 
 function metricCard(page: CommandPage, label: string, value: string, helper: string, x: number, y: number, width = 160) {

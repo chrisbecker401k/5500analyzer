@@ -42,8 +42,23 @@ function titleCasePlan(value: string) {
     .replace(/\bInc\.?/g, "Inc.")
     .replace(/\bLlc\b/g, "LLC")
     .replace(/\bLtd\b/g, "Ltd.")
+    .replace(/\bAdp\b/g, "ADP")
     .replace(/401\(K\)/g, "401(k)")
     .replace(/Inc\.\./g, "Inc.");
+}
+
+function cleanProviderName(value: string | undefined) {
+  if (!value) return null;
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  const checkboxChunks = trimmed
+    .split(/\s+X\s+/)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => /[A-Z]/.test(chunk) && !/^(YES|NO|0|1|ABCDEF)/i.test(chunk));
+  const afterCheckbox = checkboxChunks.at(-1) || trimmed.match(/(?:^|.*\bX\s+)([A-Z][A-Z0-9 &'.,-]+)$/)?.[1];
+  const afterNumber = (afterCheckbox || trimmed).match(/(?:^|.*\b\d+\s+)([A-Z][A-Z0-9 &'.,-]+)$/)?.[1];
+  const cleaned = (afterNumber || afterCheckbox || trimmed).replace(/^X\s+/i, "").trim();
+  if (!cleaned || /ABCDEFGHI|123456789/.test(cleaned)) return null;
+  return titleCasePlan(cleaned);
 }
 
 function fallbackString(value: string | null, fallback: string) {
@@ -160,10 +175,23 @@ function serviceProviderFee(flatText: string, providerName: string, role: string
   return safeAbs(matchMoney(flatText, new RegExp(`${escapedProvider}[\\s\\S]{0,180}${escapedRole}\\s+(-?[\\d,]{4,8})`, "i")));
 }
 
+function scheduleCProvider(flatText: string, rolePattern: string) {
+  const matches = [...flatText.matchAll(new RegExp(`(?:^|\\s)(?:\\d+\\s+)?([A-Z][A-Z0-9 &'.,-]+?)\\s+(\\d{2}-\\d{7})\\s+([\\d\\s]+)\\s+(?:${rolePattern})\\s+(-?[\\d,]{1,8})`, "gi"))];
+  const match = matches.find((candidate) => cleanProviderName(candidate[1])) ?? matches[0];
+  if (!match) return null;
+  const name = cleanProviderName(match[1]);
+  if (!name) return null;
+  return {
+    name,
+    ein: match[2],
+    fee: safeAbs(cleanMoney(match[4]))
+  };
+}
+
 function providerByRole(flatText: string, role: string) {
-  const matches = [...flatText.matchAll(new RegExp(`(?:X\\s+\\d+\\s+)?([A-Z][A-Z &'.,-]+?)\\s+\\d{2}-\\d{7}\\s+[\\d\\s]+${role}\\s+-?[\\d,]+`, "gi"))];
-  const match = matches.find((candidate) => !candidate[1].includes("ABCDEFGHI")) ?? matches[0];
-  return match?.[1] ? titleCasePlan(match[1].replace(/^X\s+/i, "").trim()) : null;
+  const matches = [...flatText.matchAll(new RegExp(`(?:^|\\s)(?:\\d+\\s+)?([A-Z][A-Z &'.,-]+?)\\s+\\d{2}-\\d{7}\\s+[\\d\\s]+(?:${role})\\s+-?[\\d,]+`, "gi"))];
+  const match = matches.find((candidate) => cleanProviderName(candidate[1])) ?? matches[0];
+  return cleanProviderName(match?.[1]);
 }
 
 function participantStats(flatText: string) {
@@ -194,15 +222,16 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
   const flatText = flatten(text);
   const auditedPlanName = matchText(text, /\n([A-Z][A-Z\s,.'()&-]+401\(k\) PLAN)\nSTATEMENTS OF NET ASSETS/i);
   const schedulePlanName = matchText(text, /A Name of plan B Three-digit\s+([A-Z0-9 ,.'()&-]+?)\s+plan number/i);
-  const flattenedPlanName = matchText(flatText, /\d{2}\/\d{2}\/\d{4}\s+\d{2}\/\d{2}\/\d{4}(?:\s+X){1,4}\s+([A-Z0-9 ,.'()&-]+?(?:401\(K\) PLAN|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN))\s+(\d{3})\s+\d{2}\/\d{2}\/\d{4}/i);
+  const planKindPattern = "401\\(K\\) PLAN(?: AND TRUST)?|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN";
+  const flattenedPlanName = matchText(flatText, new RegExp(`\\d{2}\\/\\d{2}\\/\\d{4}\\s+\\d{2}\\/\\d{2}\\/\\d{4}(?:\\s+X){1,4}\\s+([A-Z0-9 ,.'()&-]+?(?:${planKindPattern}))\\s+(\\d{3})\\s+\\d{2}\\/\\d{2}\\/\\d{4}`, "i"));
   const rawPlanName = auditedPlanName || schedulePlanName || flattenedPlanName || "Uploaded Retirement Plan";
   const planName = titleCasePlan(rawPlanName);
   const sponsorName = matchText(flatText, /(?:401\(K\) PLAN|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN)\s+\d{3}\s+\d{2}\/\d{2}\/\d{4}\s+\d{2}-\d{7}\s+([A-Z0-9 &'.,-]+?)\s+\d{3}-\d{3}-\d{4}/i);
-  const companyName = titleCasePlan(fallbackString(sponsorName, rawPlanName.replace(/\s*(?:401\(K\)\s*PLAN|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN)/i, "").replace(/\s+/g, " ").trim()));
+  const companyName = titleCasePlan(fallbackString(sponsorName, rawPlanName.replace(/\s*(?:401\(K\)\s*PLAN(?: AND TRUST)?|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN)/i, "").replace(/\s+/g, " ").trim()));
   const planYear = cleanNumber(text.match(/For calendar plan year\s+(\d{4})/i)?.[1]) || cleanNumber(flatText.match(/Form 5500\) 2024/)?.[0]?.match(/\d{4}/)?.[0]) || new Date().getFullYear();
-  const filingEin = matchText(flatText, /(?:401\(K\) PLAN|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN)\s+\d{3}\s+\d{2}\/\d{2}\/\d{4}\s+([0-9]{2}-[0-9]{7})/i);
+  const filingEin = matchText(flatText, /(?:401\(K\) PLAN(?: AND TRUST)?|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN)\s+\d{3}\s+\d{2}\/\d{2}\/\d{4}\s+([0-9]{2}-[0-9]{7})/i);
   const ein = filingEin || matchText(text, /EIN:\s*([0-9-]+)/i) || "Not visible in filing";
-  const planNumber = matchText(text, /Plan No\.\s*(\d+)/i) || matchText(flatText, /(?:401\(K\) PLAN|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN)\s+(\d{3})\s+\d{2}\/\d{2}\/\d{4}/i) || "Not visible";
+  const planNumber = matchText(text, /Plan No\.\s*(\d+)/i) || matchText(flatText, /(?:401\(K\) PLAN(?: AND TRUST)?|RETIREMENT PLAN|SAVINGS PLAN|PROFIT SHARING PLAN)\s+(\d{3})\s+\d{2}\/\d{2}\/\d{4}/i) || "Not visible";
   const page14 = scheduleHPage14Values(flatText);
   const page15 = scheduleHPage15Values(flatText);
   const page16 = scheduleHPage16Values(flatText);
@@ -224,8 +253,10 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
   const activeParticipants = stats.active || participantCount(text, "6a(2)");
   const separatedParticipants = stats.separated || participantCount(text, "6c");
   const participantsWithBalances = stats.withBalances || participantCount(text, "6g(2)") || null;
-  const recordkeeper = providerByRole(flatText, "RECORDKEEPER") || inferProvider(text, "Fidelity Investments Institutional") || inferProvider(text, "Fidelity Management Trust Company");
-  const advisor = providerByRole(flatText, "INVESTMENT ADVISOR") || providerByRole(flatText, "ADVISOR") || inferProvider(text, "Everhart Financial Group Inc");
+  const scheduleCAdvisor = scheduleCProvider(flatText, "INVESTMENT\\s*\\/\\s*FIN\\s+ANCIAL\\s+ADVI|INVESTMENT\\s+ADVISOR|ADVISOR");
+  const scheduleCRecordkeeper = scheduleCProvider(flatText, "RECORD\\s*KEEPER|RECORDKEEPER");
+  const recordkeeper = scheduleCRecordkeeper?.name || providerByRole(flatText, "RECORD\\s*KEEPER|RECORDKEEPER") || inferProvider(text, "Fidelity Investments Institutional") || inferProvider(text, "Fidelity Management Trust Company");
+  const advisor = scheduleCAdvisor?.name || providerByRole(flatText, "INVESTMENT\\s*\\/\\s*FIN\\s+ANCIAL\\s+ADVI|INVESTMENT ADVISOR") || providerByRole(flatText, "ADVISOR") || inferProvider(text, "Everhart Financial Group Inc");
   const trustee = inferProvider(text, "Fidelity Management Trust Company") || null;
   const rawAuditor =
     matchText(text, /\n([A-Z][A-Za-z&\s]+CPAs)\nCertified Public Accountants/i) ||
@@ -234,9 +265,11 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
   const auditor = rawAuditor && !/ABCDEFGHI|ABCDEF/i.test(rawAuditor) ? titleCasePlan(rawAuditor) : null;
   const recordkeepingFees = serviceProviderFee(flatText, "FIDELITY INVESTMENTS INSTITUTIONAL", "RECORDKEEPER") || matchMoney(text, /Recordkeeping fees[^\n]*2i\(3\)\s+([\d,]+)/i);
   const advisoryFees =
+    scheduleCAdvisor?.fee ||
     serviceProviderFee(flatText, "EVERHART FINANCIAL GROUP INC", "ADVISOR") ||
     serviceProviderFee(flatText, "OXFORD FINANCIAL GROUP LTD", "INVESTMENT ADVISOR") ||
     matchMoney(text, /Investment advisory and investment management fees[^\n]*2i\(5\)\s+([\d,]+)/i);
+  const recordkeepingFeesFromScheduleC = scheduleCRecordkeeper?.fee || recordkeepingFees;
   const menu = countInvestmentMenu(text);
   const extractionWarnings = [
     !endingAssets ? "Ending net assets not visible in filing" : null,
@@ -270,7 +303,7 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
     advisor,
     auditor,
     trustee,
-    recordkeepingFees,
+    recordkeepingFees: recordkeepingFeesFromScheduleC,
     advisoryFees,
     investmentGain: netInvestmentGain,
     netInvestmentGain,

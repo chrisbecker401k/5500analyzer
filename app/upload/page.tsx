@@ -9,6 +9,7 @@ import { UploadDropzone } from "@/components/UploadDropzone";
 import { StatusBadge } from "@/components/StatusBadge";
 import { analyzeForm5500 } from "@/services/form5500Extractor";
 import { calculateMetrics, generateDocxReport, generatePdfReport } from "@/services/reportGenerator";
+import { saveGeneratedHistory } from "@/services/historyStore";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import type { PlanAnalysis, ReportFile } from "@/types/plan";
 
@@ -47,6 +48,14 @@ export default function UploadPage() {
     setGenerating(true);
     const generated = await Promise.all([generatePdfReport(analysis, metrics), generateDocxReport(analysis, metrics)]);
     setFiles(generated);
+    const generatedAnalysis = {
+      ...analysis,
+      status: "Generated" as const,
+      generatedFiles: generated,
+      updatedAt: new Date().toISOString()
+    };
+    setAnalysis(generatedAnalysis);
+    saveGeneratedHistory(generatedAnalysis);
     setGenerating(false);
   }
 

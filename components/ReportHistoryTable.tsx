@@ -2,19 +2,36 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Archive, Download, Eye, FileDown, MoreHorizontal, type LucideIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { historyRows } from "@/data/mockData";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { StatusBadge } from "@/components/StatusBadge";
+import { getArchivedHistoryIds, getGeneratedHistory, saveArchivedHistoryIds } from "@/services/historyStore";
+import type { PlanAnalysis } from "@/types/plan";
 
 export function ReportHistoryTable() {
+  const [generatedRows, setGeneratedRows] = useState<PlanAnalysis[]>([]);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
-  const visibleRows = useMemo(() => historyRows.filter((row) => !archivedIds.includes(row.id)), [archivedIds]);
+  const rows = useMemo(() => [...generatedRows, ...historyRows.filter((row) => !generatedRows.some((generated) => generated.id === row.id))], [generatedRows]);
+  const visibleRows = useMemo(() => rows.filter((row) => !archivedIds.includes(row.id)), [archivedIds, rows]);
   const actions: Array<[string, LucideIcon]> = [
     ["View PDF", Eye],
     ["Download DOCX", FileDown],
     ["Open Details", Download]
   ];
+
+  useEffect(() => {
+    setGeneratedRows(getGeneratedHistory());
+    setArchivedIds(getArchivedHistoryIds());
+  }, []);
+
+  function archiveReport(id: string) {
+    setArchivedIds((ids) => {
+      const next = [...new Set([...ids, id])];
+      saveArchivedHistoryIds(next);
+      return next;
+    });
+  }
 
   return (
     <div className="card overflow-hidden">
@@ -32,7 +49,7 @@ export function ReportHistoryTable() {
         </thead>
         <tbody>
           {visibleRows.map((row, index) => (
-            <tr key={row.id} className="border-b border-slate-100 last:border-0">
+            <tr key={row.id} className="border-b border-slate-100 bg-white last:border-0">
               <td className="px-6 py-4">
                 <div className="flex items-center gap-3">
                   <span className="flex h-8 w-8 items-center justify-center rounded-md bg-everhart-blue text-xs font-bold text-white">
@@ -53,15 +70,27 @@ export function ReportHistoryTable() {
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content align="end" className="z-50 w-52 rounded-lg border border-slate-200 bg-white p-2 shadow-soft">
-                      {actions.map(([label, Icon]) => (
-                        <DropdownMenu.Item key={label} className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm outline-none hover:bg-slate-50">
-                          <Icon className="h-4 w-4 text-slate-500" />
-                          {label}
-                        </DropdownMenu.Item>
-                      ))}
+                      {actions.map(([label, Icon]) => {
+                        const file = label === "Download DOCX"
+                          ? row.generatedFiles?.find((generated) => generated.type === "docx")
+                          : row.generatedFiles?.find((generated) => generated.type === "pdf");
+                        return file ? (
+                          <DropdownMenu.Item key={label} asChild>
+                            <a href={file.url} target="_blank" className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm outline-none hover:bg-slate-50">
+                              <Icon className="h-4 w-4 text-slate-500" />
+                              {label}
+                            </a>
+                          </DropdownMenu.Item>
+                        ) : (
+                          <DropdownMenu.Item key={label} className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm outline-none hover:bg-slate-50">
+                            <Icon className="h-4 w-4 text-slate-500" />
+                            {label}
+                          </DropdownMenu.Item>
+                        );
+                      })}
                       <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
                       <DropdownMenu.Item
-                        onSelect={() => setArchivedIds((ids) => [...ids, row.id])}
+                        onSelect={() => archiveReport(row.id)}
                         className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-50"
                       >
                         <Archive className="h-4 w-4 text-slate-500" />

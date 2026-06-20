@@ -16,7 +16,16 @@ function reportQuery(planAnalysis: PlanAnalysis, calculatedMetrics: CalculatedMe
     auditor: planAnalysis.auditor ?? "Not visible in filing",
     assetGrowthPercent: String(calculatedMetrics.assetGrowthPercent ?? ""),
     averageBalance: String(calculatedMetrics.averageBalance ?? ""),
-    adminFeeBps: String(calculatedMetrics.adminFeeBps ?? "")
+    adminFeeBps: String(calculatedMetrics.adminFeeBps ?? ""),
+    netCashFlow: String(calculatedMetrics.netCashFlow ?? ""),
+    contributionPercentOfAssets: String(calculatedMetrics.contributionPercentOfAssets ?? ""),
+    benefitsPaidPercentOfAssets: String(calculatedMetrics.benefitsPaidPercentOfAssets ?? ""),
+    loanPercentOfAssets: String(calculatedMetrics.loanPercentOfAssets ?? ""),
+    totalContributions: String(planAnalysis.totalContributions ?? ""),
+    benefitsPaid: String(planAnalysis.benefitsPaid ?? ""),
+    administrativeExpenses: String(planAnalysis.administrativeExpenses ?? ""),
+    participantLoans: String(planAnalysis.participantLoans ?? ""),
+    netAssetChange: String(planAnalysis.netAssetChange ?? "")
   });
   if (planAnalysis.recordkeepingFees !== undefined && planAnalysis.recordkeepingFees !== null) {
     params.set("recordkeepingFees", String(planAnalysis.recordkeepingFees));

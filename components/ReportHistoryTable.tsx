@@ -2,16 +2,18 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Archive, Download, Eye, FileDown, MoreHorizontal, type LucideIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 import { historyRows } from "@/data/mockData";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { StatusBadge } from "@/components/StatusBadge";
 
 export function ReportHistoryTable() {
+  const [archivedIds, setArchivedIds] = useState<string[]>([]);
+  const visibleRows = useMemo(() => historyRows.filter((row) => !archivedIds.includes(row.id)), [archivedIds]);
   const actions: Array<[string, LucideIcon]> = [
     ["View PDF", Eye],
     ["Download DOCX", FileDown],
-    ["Open Details", Download],
-    ["Archive Report", Archive]
+    ["Open Details", Download]
   ];
 
   return (
@@ -29,7 +31,7 @@ export function ReportHistoryTable() {
           </tr>
         </thead>
         <tbody>
-          {historyRows.map((row, index) => (
+          {visibleRows.map((row, index) => (
             <tr key={row.id} className="border-b border-slate-100 last:border-0">
               <td className="px-6 py-4">
                 <div className="flex items-center gap-3">
@@ -57,6 +59,14 @@ export function ReportHistoryTable() {
                           {label}
                         </DropdownMenu.Item>
                       ))}
+                      <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+                      <DropdownMenu.Item
+                        onSelect={() => setArchivedIds((ids) => [...ids, row.id])}
+                        className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-50"
+                      >
+                        <Archive className="h-4 w-4 text-slate-500" />
+                        Archive Report
+                      </DropdownMenu.Item>
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>
                 </DropdownMenu.Root>
@@ -66,7 +76,7 @@ export function ReportHistoryTable() {
         </tbody>
       </table>
       <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 text-sm text-slate-500">
-        <span>Showing 1 to 10 of 87 reports</span>
+        <span>Showing {visibleRows.length ? `1 to ${visibleRows.length}` : "0"} of {visibleRows.length} active reports</span>
         <span className="font-semibold text-everhart-blue">1&nbsp;&nbsp; 2&nbsp;&nbsp; 3&nbsp;&nbsp; ...&nbsp;&nbsp; 9</span>
       </div>
     </div>

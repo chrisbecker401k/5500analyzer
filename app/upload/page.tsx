@@ -18,20 +18,28 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<ReportFile[]>([]);
   const metrics = useMemo(() => (analysis ? calculateMetrics(analysis) : null), [analysis]);
 
   async function runAnalysis() {
     if (!file) return;
     setRunning(true);
+    setError(null);
     setFiles([]);
-    setProgress(35);
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    setProgress(72);
-    const result = await analyzeForm5500(file);
-    setProgress(100);
-    setAnalysis(result);
-    setRunning(false);
+    try {
+      setProgress(35);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setProgress(72);
+      const result = await analyzeForm5500(file);
+      setProgress(100);
+      setAnalysis(result);
+    } catch {
+      setProgress(0);
+      setError("We could not read this PDF. Try another filing package or validate the PDF text layer.");
+    } finally {
+      setRunning(false);
+    }
   }
 
   async function generateReport() {
@@ -46,6 +54,7 @@ export default function UploadPage() {
     setFile(selectedFile);
     setAnalysis(null);
     setFiles([]);
+    setError(null);
     setProgress(15);
   }
 
@@ -69,13 +78,14 @@ export default function UploadPage() {
               ["Schedule R", ScrollText, "text-violet-700"],
               ["Audited Financial Statements", FileText, "text-cyan-700"]
             ].map(([title, Icon, accent]) => (
-              <DetectedDocumentCard key={title as string} title={title as string} icon={Icon as typeof FileText} accent={accent as string} />
+              <DetectedDocumentCard key={title as string} title={title as string} icon={Icon as typeof FileText} accent={accent as string} detected={Boolean(analysis)} />
             ))}
           </div>
-          <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-600">
-            <CheckCircle2 className="mr-2 inline h-4 w-4 text-everhart-blue" />
-            5 of 5 required documents detected. You can add more files if needed.
+          <div className={`mt-5 rounded-lg border px-4 py-3 text-sm ${analysis ? "border-blue-100 bg-blue-50 text-slate-600" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+            <CheckCircle2 className={`mr-2 inline h-4 w-4 ${analysis ? "text-everhart-blue" : "text-slate-400"}`} />
+            {analysis ? "Detected document types from the uploaded filing package. You can add more files if needed." : "Document detection will run after analysis."}
           </div>
+          {error ? <div className="mt-5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-800">{error}</div> : null}
           {analysis ? (
             <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-5">
               <div className="flex items-center justify-between">
@@ -104,6 +114,12 @@ export default function UploadPage() {
                   ))}
                 </div>
               </div>
+              {analysis.extractionWarnings?.length ? (
+                <div className="mt-4 rounded-lg border border-orange-200 bg-white/80 p-4 text-xs text-orange-800">
+                  <p className="font-bold">Needs validation</p>
+                  {analysis.extractionWarnings.map((warning) => <p key={warning} className="mt-1">{warning}</p>)}
+                </div>
+              ) : null}
               {files.length ? (
                 <div className="mt-4 flex gap-3">
                   {files.map((generated) => (

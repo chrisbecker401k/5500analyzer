@@ -50,6 +50,7 @@ export type PlanAnalysis = {
   planDesignSignals?: string[];
   investmentMenuSignals?: string[];
   sourceFields?: Record<string, string>;
+  extractionWarnings?: string[];
   status: PlanStatus;
   createdAt: string;
   updatedAt: string;

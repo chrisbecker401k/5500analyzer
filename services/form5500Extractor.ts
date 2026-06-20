@@ -1,4 +1,3 @@
-import { mockPlanAnalyses } from "@/data/mockData";
 import type { PlanAnalysis } from "@/types/plan";
 import { extractPlanAnalysisFromText } from "@/services/form5500FieldMapper";
 
@@ -10,31 +9,55 @@ export async function analyzeForm5500(file: File): Promise<PlanAnalysis> {
     body: formData
   });
 
-  if (response.ok) {
-    return response.json() as Promise<PlanAnalysis>;
+  if (!response.ok) {
+    const fallbackName = file.name
+      .replace(/\.pdf$/i, "")
+      .replace(/form\s*5500/gi, "")
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "Uploaded Plan Sponsor";
+
+    return {
+      id: `analysis-${Date.now()}`,
+      companyName: fallbackName,
+      planName: "Not visible in filing",
+      planYear: new Date().getFullYear(),
+      ein: "Not visible in filing",
+      planNumber: "Not visible",
+      endingAssets: null,
+      beginningAssets: null,
+      netAssetChange: null,
+      participantsWithBalances: null,
+      activeParticipants: null,
+      separatedParticipants: null,
+      totalContributions: null,
+      employerContributions: null,
+      participantContributions: null,
+      rollovers: null,
+      benefitsPaid: null,
+      administrativeExpenses: null,
+      participantLoans: null,
+      recordkeeper: null,
+      advisor: null,
+      auditor: null,
+      trustee: null,
+      status: "Review Needed",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      confidenceScores: {},
+      missingFields: ["PDF text extraction failed", "Requires additional plan records"],
+      generatedFiles: [],
+      extractionWarnings: ["PDF text extraction failed. No unsupported values were guessed."],
+      sourceFields: {
+        planIdentity: "Not visible in filing",
+        participantCounts: "Not visible in filing",
+        planEconomics: "Not visible in filing",
+        providers: "Not visible in filing"
+      }
+    };
   }
 
-  // Replace this mock with a secure extraction API call. Keep outputs limited to values visible
-  // in the filing package, and label gaps instead of guessing.
-  await new Promise((resolve) => setTimeout(resolve, 900));
-  const base = mockPlanAnalyses[0];
-  const companyName = file.name
-    .replace(/\.pdf$/i, "")
-    .replace(/form\s*5500/gi, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const sponsor = companyName || "Uploaded Plan Sponsor";
-
-  return {
-    ...base,
-    id: `analysis-${Date.now()}`,
-    companyName: sponsor,
-    planName: `${sponsor} 401(k) Plan`,
-    status: "Ready",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
+  return response.json() as Promise<PlanAnalysis>;
 }
 
 export async function parseUploadedPdf(file: File) {

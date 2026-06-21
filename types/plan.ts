@@ -42,9 +42,11 @@ export type PlanAnalysis = {
   trustee: string | null;
   recordkeepingFees?: number | null;
   advisoryFees?: number | null;
+  auditAdministrativeExpenses?: number | null;
   investmentGain?: number | null;
   netInvestmentGain?: number | null;
   stableValueAssets?: number | null;
+  commonCollectiveTrustAssets?: number | null;
   mutualFundAssets?: number | null;
   targetDateAssets?: number | null;
   planDesignSignals?: string[];

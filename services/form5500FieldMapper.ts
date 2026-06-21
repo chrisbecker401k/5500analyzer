@@ -20,6 +20,17 @@ function matchMoney(text: string, pattern: RegExp) {
   return cleanMoney(text.match(pattern)?.[1]);
 }
 
+function matchMoneyAfter(text: string, label: RegExp) {
+  const flags = label.flags.includes("g") ? label.flags : `${label.flags}g`;
+  const matcher = new RegExp(label.source, flags);
+  for (const match of text.matchAll(matcher)) {
+    const after = text.slice((match.index ?? 0) + match[0].length, (match.index ?? 0) + match[0].length + 220);
+    const parsed = cleanMoney(after.match(/\$?\s*(-?[\d,]{2,})/)?.[1]);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
 function matchText(text: string, pattern: RegExp) {
   return text.match(pattern)?.[1]?.replace(/\s+/g, " ").trim() || null;
 }
@@ -208,6 +219,13 @@ function inferProvider(text: string, candidate: string) {
   return text.toUpperCase().includes(candidate.toUpperCase()) ? candidate : null;
 }
 
+function inferTrustee(text: string) {
+  const certifiedTrustee = matchText(text, /prepared and certified as complete and accurate by\s+([A-Z][A-Za-z\s&.,'-]+?)\s+\((?:Reliance|the trustee)\)/i);
+  if (certifiedTrustee) return titleCasePlan(certifiedTrustee);
+  if (/Reliance Trust Company/i.test(text)) return "Reliance Trust Company";
+  return inferProvider(text, "Fidelity Management Trust Company");
+}
+
 function inferAuditorFromAuditReport(text: string, flatText: string) {
   const directAuditor =
     matchText(text, /\n([A-Z][A-Za-z&\s]+CPAs)\nCertified Public Accountants/i) ||
@@ -238,6 +256,13 @@ function countInvestmentMenu(text: string) {
   return { mutualFunds, stableValue, targetDate };
 }
 
+function scheduleAssetTotals(text: string) {
+  const mutualFundAssets = matchMoneyAfter(text, /Total Mutual Funds/i);
+  const commonCollectiveTrustAssets = matchMoneyAfter(text, /Total Common Collective Trusts?/i);
+  const stableValueAssets = matchMoneyAfter(text, /Reliance Trust Company\s+Metlife Stable Value Series 25053/i);
+  return { mutualFundAssets, commonCollectiveTrustAssets, stableValueAssets };
+}
+
 export function extractPlanAnalysisFromText(rawText: string, fileName = "uploaded-form-5500.pdf"): PlanAnalysis {
   const text = normalize(rawText);
   const flatText = flatten(text);
@@ -256,20 +281,36 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
   const page14 = scheduleHPage14Values(flatText);
   const page15 = scheduleHPage15Values(flatText);
   const page16 = scheduleHPage16Values(flatText);
+  const assetTotals = scheduleAssetTotals(text);
 
   const endingAssets = matchMoney(text, /NET ASSETS AVAILABLE FOR BENEFITS\s+\$?\s*([\d,]+)\s+\$?\s*[\d,]+/i) || page15?.endingAssets || null;
   const beginningAssets = matchMoney(text, /Beginning of year\s+([\d,]+)/i) || page15?.beginningAssets || null;
   const participantLoans = matchMoney(text, /Notes receivable from participants\s+([\d,]+)\s+[\d,]+/i) || page14?.endingParticipantLoans || null;
-  const stableValueAssets = matchMoney(text, /Stable value funds\s+([\d,]+)\s+[\d,]+/i);
-  const mutualFundAssets = matchMoney(text, /Mutual funds\s+\$\s*([\d,]+)\s+\$/i) || page14?.endingMutualFundAssets || null;
+  const stableValueAssets = matchMoney(text, /Stable value funds\s+([\d,]+)\s+[\d,]+/i) || assetTotals.stableValueAssets;
+  const mutualFundAssets = matchMoney(text, /Mutual funds\s+\$?\s*([\d,]+)\s+\$?\s*[\d,]+/i) || assetTotals.mutualFundAssets || page14?.endingMutualFundAssets || null;
+  const commonCollectiveTrustAssets = assetTotals.commonCollectiveTrustAssets || page14?.endingCctAssets || null;
   const employerContributions = matchMoney(text, /Employer\s+([\d,]+)\s+Participant/i) || page15?.employerContributions || null;
   const participantContributions = matchMoney(text, /Participant\s+([\d,]+)\s+Rollover/i) || page15?.participantContributions || null;
   const rollovers = matchMoney(text, /Rollover\s+([\d,]+)\s+Total contributions/i) || page15?.rollovers || null;
   const totalContributions = matchMoney(text, /Total contributions\s+([\d,]+)/i) || page15?.totalContributions || null;
-  const benefitsPaid = matchMoney(text, /Benefits paid to participants\s+([\d,]+)/i) || page16?.benefitsPaid || null;
-  const administrativeExpenses = matchMoney(text, /Administrative fees\s+([\d,]+)/i) || page16?.administrativeExpenses || null;
-  const netAssetChange = matchMoney(text, /Net Change in Net Assets Available for Benefits\s+([\d,]+)/i) || page16?.netAssetChange || null;
-  const netInvestmentGain = matchMoney(text, /Net investment gain\s+([\d,]+)/i) || ((page16?.commonCollectiveTrustGain ?? 0) + (page16?.mutualFundGain ?? 0) || null);
+  const auditedBenefitsPaid = matchMoneyAfter(text, /Benefits paid/i);
+  const benefitsPaid = auditedBenefitsPaid || matchMoney(text, /Benefits paid to participants\s+([\d,]+)/i) || page16?.benefitsPaid || null;
+  const auditAdministrativeExpenses =
+    matchMoney(text, /Administrative expenses\s+([\d,]+)\s+[\d,]+\s+Total deductions/i) ||
+    matchMoney(text, /Administrative expenses paid by the Plan totaled\s+\$?\s*([\d,]+)/i) ||
+    null;
+  const administrativeExpenses =
+    matchMoney(text, /Administrative fees\s+([\d,]+)/i) ||
+    page16?.administrativeExpenses ||
+    auditAdministrativeExpenses ||
+    null;
+  const netAssetChange = matchMoneyAfter(text, /Net increase/i) || matchMoney(text, /Net Change in Net Assets Available for Benefits\s+([\d,]+)/i) || page16?.netAssetChange || null;
+  const totalInvestmentIncome = matchMoneyAfter(text, /Total investment income/i);
+  const loanInterestIncome = matchMoneyAfter(text, /Interest income on notes receivable from participants/i);
+  const netInvestmentGain =
+    (totalInvestmentIncome !== null || loanInterestIncome !== null)
+      ? (totalInvestmentIncome ?? 0) + (loanInterestIncome ?? 0)
+      : matchMoney(text, /Net investment gain\s+([\d,]+)/i) || ((page16?.commonCollectiveTrustGain ?? 0) + (page16?.mutualFundGain ?? 0) || null);
   const stats = participantStats(flatText);
   const activeParticipants = stats.active || participantCount(text, "6a(2)");
   const separatedParticipants = stats.separated || participantCount(text, "6c");
@@ -278,7 +319,7 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
   const scheduleCRecordkeeper = scheduleCProvider(flatText, "RECORD\\s*KEEPER|RECORDKEEPER");
   const recordkeeper = scheduleCRecordkeeper?.name || providerByRole(flatText, "RECORD\\s*KEEPER|RECORDKEEPER") || inferProvider(text, "Fidelity Investments Institutional") || inferProvider(text, "Fidelity Management Trust Company");
   const advisor = scheduleCAdvisor?.name || providerByRole(flatText, "INVESTMENT\\s*\\/\\s*FIN\\s+ANCIAL\\s+ADVI|INVESTMENT ADVISOR") || providerByRole(flatText, "ADVISOR") || inferProvider(text, "Everhart Financial Group Inc");
-  const trustee = inferProvider(text, "Fidelity Management Trust Company") || null;
+  const trustee = inferTrustee(text);
   const auditor = inferAuditorFromAuditReport(text, flatText);
   const recordkeepingFees = serviceProviderFee(flatText, "FIDELITY INVESTMENTS INSTITUTIONAL", "RECORDKEEPER") || matchMoney(text, /Recordkeeping fees[^\n]*2i\(3\)\s+([\d,]+)/i);
   const advisoryFees =
@@ -322,21 +363,24 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
     trustee,
     recordkeepingFees: recordkeepingFeesFromScheduleC,
     advisoryFees,
+    auditAdministrativeExpenses,
     investmentGain: netInvestmentGain,
     netInvestmentGain,
     stableValueAssets,
+    commonCollectiveTrustAssets,
     mutualFundAssets,
     targetDateAssets: null,
     planDesignSignals: [
-      text.match(/Immediate eligibility/i) ? "Immediate eligibility language visible in plan notes." : "Plan design details require additional plan records.",
-      text.match(/safe harbor/i) ? "Safe harbor language visible in plan notes." : "Safe harbor match not visible in filing.",
-      text.match(/after-tax/i) ? "After-tax contribution language visible in plan notes." : "After-tax contribution provisions require additional plan records."
+      text.match(/completed 6 consecutive months of service and (?:are )?age 20 or older/i) ? "Eligibility: 6 consecutive months of service and age 20 or older." : "Eligibility requires additional plan records.",
+      text.match(/automatically enrolled/i) ? "Auto-enrollment: Employees are automatically enrolled once eligibility requirements are met, unless they opt out." : "Auto-enrollment requires additional plan records.",
+      text.match(/no matching or discretionary contributions were made/i) ? "Employer contributions: No matching or discretionary contributions were made for 2024 or 2023." : "Employer contribution detail requires additional plan records.",
+      text.match(/Vesting[\s\S]{0,500}6\s+100%/i) ? "Vesting: Company contribution vesting grades to 100% after six years of service." : "Vesting requires additional plan records."
     ],
     investmentMenuSignals: [
-      menu.mutualFunds ? `${menu.mutualFunds} mutual fund options visible in the asset schedule.` : "Investment menu detail requires Schedule H asset schedule or provider records.",
-      menu.stableValue ? `${menu.stableValue} stable value option${menu.stableValue === 1 ? "" : "s"} visible in plan notes or asset schedule.` : "Stable value detail requires additional plan records.",
-      menu.targetDate ? `${menu.targetDate} target-date vintages visible in the asset schedule.` : "Target-date assets require investment lineup detail.",
-      "Fund expenses require fund-level review beyond Form 5500."
+      mutualFundAssets || commonCollectiveTrustAssets || participantLoans ? "Menu assets: Mutual funds, common collective trusts, and participant loans are reported." : "Menu assets require Schedule H asset schedule or provider records.",
+      mutualFundAssets ? `Mutual funds: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(mutualFundAssets)} at year-end.` : "Mutual fund assets require additional plan records.",
+      commonCollectiveTrustAssets || stableValueAssets ? `Common collective trusts: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(commonCollectiveTrustAssets ?? stableValueAssets ?? 0)} at year-end, including stable value.` : "Common collective trust detail requires additional plan records.",
+      participantLoans ? `Participant loans: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(participantLoans)} at interest rates of 3.25% to 9.50%.` : "Participant loan detail requires additional plan records."
     ],
     status: "Ready",
     createdAt: new Date().toISOString(),

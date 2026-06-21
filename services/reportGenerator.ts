@@ -14,6 +14,9 @@ function reportQuery(planAnalysis: PlanAnalysis, calculatedMetrics: CalculatedMe
     recordkeeper: planAnalysis.recordkeeper ?? "Not visible in filing",
     advisor: planAnalysis.advisor ?? "Not visible in filing",
     auditor: planAnalysis.auditor ?? "Not visible in filing",
+    trustee: planAnalysis.trustee ?? "Not visible in filing",
+    activeParticipants: String(planAnalysis.activeParticipants ?? ""),
+    separatedParticipants: String(planAnalysis.separatedParticipants ?? ""),
     assetGrowthPercent: String(calculatedMetrics.assetGrowthPercent ?? ""),
     averageBalance: String(calculatedMetrics.averageBalance ?? ""),
     adminFeeBps: String(calculatedMetrics.adminFeeBps ?? ""),
@@ -33,6 +36,9 @@ function reportQuery(planAnalysis: PlanAnalysis, calculatedMetrics: CalculatedMe
   if (planAnalysis.advisoryFees !== undefined && planAnalysis.advisoryFees !== null) {
     params.set("advisoryFees", String(planAnalysis.advisoryFees));
   }
+  if (planAnalysis.auditAdministrativeExpenses !== undefined && planAnalysis.auditAdministrativeExpenses !== null) {
+    params.set("auditAdministrativeExpenses", String(planAnalysis.auditAdministrativeExpenses));
+  }
   if (planAnalysis.netInvestmentGain !== undefined && planAnalysis.netInvestmentGain !== null) {
     params.set("netInvestmentGain", String(planAnalysis.netInvestmentGain));
   }
@@ -41,6 +47,9 @@ function reportQuery(planAnalysis: PlanAnalysis, calculatedMetrics: CalculatedMe
   }
   if (planAnalysis.stableValueAssets !== undefined && planAnalysis.stableValueAssets !== null) {
     params.set("stableValueAssets", String(planAnalysis.stableValueAssets));
+  }
+  if (planAnalysis.commonCollectiveTrustAssets !== undefined && planAnalysis.commonCollectiveTrustAssets !== null) {
+    params.set("commonCollectiveTrustAssets", String(planAnalysis.commonCollectiveTrustAssets));
   }
   if (planAnalysis.planDesignSignals?.length) {
     params.set("planDesignSignals", planAnalysis.planDesignSignals.join("|"));
@@ -60,6 +69,7 @@ export function calculateMetrics(planAnalysis: PlanAnalysis): CalculatedMetrics 
     benefitsPaid,
     participantLoans,
     administrativeExpenses,
+    auditAdministrativeExpenses,
     participantsWithBalances
   } = planAnalysis;
 
@@ -68,13 +78,13 @@ export function calculateMetrics(planAnalysis: PlanAnalysis): CalculatedMetrics 
       ? ((endingAssets! - beginningAssets!) / beginningAssets!) * 100
       : null,
     netCashFlow: canCalculateMetric(totalContributions, benefitsPaid)
-      ? totalContributions! - benefitsPaid!
+      ? totalContributions! - benefitsPaid! - (auditAdministrativeExpenses ?? administrativeExpenses ?? 0)
       : null,
     contributionPercentOfAssets: canCalculateMetric(totalContributions, endingAssets) && endingAssets !== 0
       ? (totalContributions! / endingAssets!) * 100
       : null,
-    benefitsPaidPercentOfAssets: canCalculateMetric(benefitsPaid, endingAssets) && endingAssets !== 0
-      ? (benefitsPaid! / endingAssets!) * 100
+    benefitsPaidPercentOfAssets: canCalculateMetric(benefitsPaid, beginningAssets) && beginningAssets !== 0
+      ? (benefitsPaid! / beginningAssets!) * 100
       : null,
     loanPercentOfAssets: canCalculateMetric(participantLoans, endingAssets) && endingAssets !== 0
       ? (participantLoans! / endingAssets!) * 100

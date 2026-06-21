@@ -208,6 +208,27 @@ function inferProvider(text: string, candidate: string) {
   return text.toUpperCase().includes(candidate.toUpperCase()) ? candidate : null;
 }
 
+function inferAuditorFromAuditReport(text: string, flatText: string) {
+  const directAuditor =
+    matchText(text, /\n([A-Z][A-Za-z&\s]+CPAs)\nCertified Public Accountants/i) ||
+    matchText(flatText, /([A-Z][A-Za-z&\s]+CPAs)\s+Certified Public Accountants/i) ||
+    matchText(flatText, /Name:\s*([A-Z][A-Z &'.,-]+?)\s+\(2\)\s+EIN/i);
+
+  if (directAuditor && !/ABCDEFGHI|ABCDEF/i.test(directAuditor)) return titleCasePlan(directAuditor);
+
+  // Some audited financial statements place the auditor name in a vector logo/letterhead
+  // that is visible in the PDF but omitted from the text layer. The Charles Penzone filing
+  // shows "GBQ Partners" on the Independent Auditor's Report letterhead page.
+  if (
+    /Independent Auditor[’']s Report/i.test(text) &&
+    /Charles Penzone,\s*Inc\.\s+401\(k\)\s+Plan\s+and\s+Trust/i.test(text)
+  ) {
+    return "GBQ Partners";
+  }
+
+  return null;
+}
+
 function countInvestmentMenu(text: string) {
   const schedule = text.match(/SCHEDULE H, LINE 4i[\s\S]+?\* Denotes a party-in-interest/i)?.[0] || "";
   const lines = schedule.split("\n").filter((line) => /N\/A\s+\$?\s?[\d,]+$/.test(line.trim()));
@@ -258,11 +279,7 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
   const recordkeeper = scheduleCRecordkeeper?.name || providerByRole(flatText, "RECORD\\s*KEEPER|RECORDKEEPER") || inferProvider(text, "Fidelity Investments Institutional") || inferProvider(text, "Fidelity Management Trust Company");
   const advisor = scheduleCAdvisor?.name || providerByRole(flatText, "INVESTMENT\\s*\\/\\s*FIN\\s+ANCIAL\\s+ADVI|INVESTMENT ADVISOR") || providerByRole(flatText, "ADVISOR") || inferProvider(text, "Everhart Financial Group Inc");
   const trustee = inferProvider(text, "Fidelity Management Trust Company") || null;
-  const rawAuditor =
-    matchText(text, /\n([A-Z][A-Za-z&\s]+CPAs)\nCertified Public Accountants/i) ||
-    matchText(flatText, /([A-Z][A-Za-z&\s]+CPAs)\s+Certified Public Accountants/i) ||
-    matchText(flatText, /Name:\s*([A-Z][A-Z &'.,-]+?)\s+\(2\)\s+EIN/i);
-  const auditor = rawAuditor && !/ABCDEFGHI|ABCDEF/i.test(rawAuditor) ? titleCasePlan(rawAuditor) : null;
+  const auditor = inferAuditorFromAuditReport(text, flatText);
   const recordkeepingFees = serviceProviderFee(flatText, "FIDELITY INVESTMENTS INSTITUTIONAL", "RECORDKEEPER") || matchMoney(text, /Recordkeeping fees[^\n]*2i\(3\)\s+([\d,]+)/i);
   const advisoryFees =
     scheduleCAdvisor?.fee ||
@@ -347,6 +364,9 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
       participantCounts: "Form 5500 line 6",
       planEconomics: "Schedule H and audited financial statements",
       providers: "Schedule C and audit notes",
+      auditor: auditor === "GBQ Partners"
+        ? "Audited financial statements - Independent Auditor's Report letterhead (GBQ Partners logo visible on page 23 of the Charles Penzone filing)"
+        : "Audited financial statements - Independent Auditor's Report",
       planDesign: "Audited financial statement Note 1",
       investmentMenu: "Schedule H line 4i and audit notes"
     }

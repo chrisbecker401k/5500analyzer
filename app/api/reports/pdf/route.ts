@@ -178,16 +178,18 @@ function tableRow(page: CommandPage, columns: string[], x: number, y: number, wi
   columns.forEach((column, index) => {
     const color = bold ? "1 1 1" : TEXT;
     const font = bold ? "F2" : "F1";
-    const size = bold ? 7.5 : 7.4;
-    const maxChars = Math.max(10, Math.floor(widths[index] / (bold ? 4.2 : 3.9)));
-    const display = column.length > maxChars ? `${column.slice(0, Math.max(0, maxChars - 3))}...` : column;
-    text(page, display, x + 8 + widths.slice(0, index).reduce((sum, width) => sum + width, 0), y, size, font, color);
+    const size = bold ? 7.5 : 6.7;
+    const maxChars = Math.max(10, Math.floor(widths[index] / (bold ? 4.2 : 3.6)));
+    const lines = bold ? [column] : wrap(column, maxChars).slice(0, 2);
+    lines.forEach((lineText, lineIndex) => {
+      text(page, lineText, x + 8 + widths.slice(0, index).reduce((sum, width) => sum + width, 0), y - lineIndex * 8, size, font, color);
+    });
   });
-  line(page, x, y - 10, x + widths.reduce((sum, width) => sum + width, 0), y - 10, "0.800 0.830 0.870", 0.5);
+  line(page, x, y - (bold ? 10 : 18), x + widths.reduce((sum, width) => sum + width, 0), y - (bold ? 10 : 18), "0.800 0.830 0.870", 0.5);
 }
 
 function topicBullet(page: CommandPage, number: string, title: string, body: string, x: number, y: number) {
-  rect(page, x, y - 6, 16, 16, BLUE);
+  circle(page, x + 8, y + 2, 8, BLUE);
   text(page, number, x + 5, y - 1, 7, "F2", "1 1 1");
   text(page, title, x + 24, y + 1, 8, "F2", TEXT);
   paragraph(page, body, x + 24, y - 10, 68, 7, 9, MUTED);
@@ -283,8 +285,8 @@ function makeReport(params: URLSearchParams) {
   tableRow(pages[1], ["Participant engagement", "Review", `The plan has ${numberLabel(params.get("participantsWithBalances"))} participants with account balances and ${numberLabel(separatedParticipants)} separated participants entitled to future benefits.`], 42, 400, [110, 90, 326]);
   tableRow(pages[1], ["Fee visibility", "Visible", "Schedule C identifies direct advisory and recordkeeping compensation; a complete fee review should still include service agreements and participant fee disclosures."], 42, 374, [110, 90, 326]);
   tableRow(pages[1], ["Plan design", "Opportunity", "The plan has auto-enrollment and permits pretax and after-tax contributions, but no matching or discretionary employer contributions were made."], 42, 348, [110, 90, 326]);
-  rect(pages[1], 42, 78, 528, 198, PANEL);
-  rect(pages[1], 42, 78, 528, 198, BORDER, true);
+  roundedRect(pages[1], 42, 78, 528, 198, 12, PANEL);
+  roundedRect(pages[1], 42, 78, 528, 198, 12, BORDER, true);
   rect(pages[1], 42, 78, 5, 198, ORANGE);
   text(pages[1], "Top 3 items to validate with plan records", 60, 238, 13, "F2", TEXT);
   paragraph(pages[1], "These are not conclusions from the filing. They are high-value discussion points for a plan sponsor or committee.", 60, 216, 88, 7.5, 10, MUTED);
@@ -349,13 +351,13 @@ function makeReport(params: URLSearchParams) {
     const [area, ...rest] = signal.split(":");
     tableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [96, 156]);
   });
-  roundedRect(pages[3], 42, 62, 528, 80, 12, "1 1 1");
-  roundedRect(pages[3], 42, 62, 528, 80, 12, BORDER, true);
-  rect(pages[3], 42, 62, 5, 80, BLUE);
-  text(pages[3], "High-value topics for committee discussion", 62, 116, 12, "F2", TEXT);
+  roundedRect(pages[3], 42, 38, 528, 76, 12, "1 1 1");
+  roundedRect(pages[3], 42, 38, 528, 76, 12, BORDER, true);
+  rect(pages[3], 42, 38, 5, 76, BLUE);
+  text(pages[3], "High-value topics for committee discussion", 62, 94, 12, "F2", TEXT);
   ["Are direct and indirect fees documented, benchmarked, and tied to service value?", "Does the plan design support recruiting, retention, and participant outcomes?", "Are terminated participant balances, loans, and distribution activity monitored as part of the annual fiduciary process?"].forEach((item, index) => {
-    circle(pages[3], 66, 94 - index * 16, 2, GREEN);
-    text(pages[3], item, 78, 91 - index * 16, 7.2, "F1", TEXT);
+    circle(pages[3], 66, 75 - index * 13, 2, GREEN);
+    text(pages[3], item, 78, 72 - index * 13, 6.6, "F1", TEXT);
   });
 
   header(pages[4], "From Insight To Action", 5);
@@ -369,10 +371,11 @@ function makeReport(params: URLSearchParams) {
     circle(pages[4], x + 26, 536, 16, accent);
     text(pages[4], item[0], x + 17, 532, 10, "F2", "1 1 1");
     text(pages[4], item[1], x + 18, 508, 15, "F2", TEXT);
-    paragraph(pages[4], item[2], x + 18, 486, 29, 8, 11, MUTED);
+    paragraph(pages[4], item[2], x + 18, 486, 31, 7.4, 9.5, MUTED);
   });
   roundedRect(pages[4], 42, 206, 528, 186, 16, BLUE);
   everhartLogo(pages[4], 74, 352, 1.28, "1 1 1");
+  text(pages[4], "A  D  V  I  S  O  R  S", 76, 332, 5.5, "F2", "1 1 1");
   text(pages[4], "Recommended next step: Retirement Plan Consultation", 74, 300, 18, "F2", "1 1 1");
   paragraph(pages[4], "Everhart Advisors will walk through the three highest-priority observations, identify needed documents, and determine whether deeper fee, provider, or fiduciary process benchmarking is worth pursuing.", 74, 270, 94, 8, 10, "1 1 1");
   roundedRect(pages[4], 74, 220, 104, 24, 12, "0.180 0.490 0.700");
@@ -413,11 +416,12 @@ function makeReport(params: URLSearchParams) {
     circle(pages[5], 64, 346 - index * 26, 2, GREEN);
     paragraph(pages[5], item, 76, 350 - index * 26, 84, 7.2, 9, TEXT);
   });
-  text(pages[5], "Selected calculations", 42, 182, 13, "F2", BLUE);
+  text(pages[5], "Selected calculations", 42, 182, 13, "F2", TEXT);
   tableRow(pages[5], ["Calculation", "Formula"], 42, 154, [160, 366], true);
   tableRow(pages[5], ["Asset growth", "(Ending net assets - beginning net assets) / beginning net assets"], 42, 130, [160, 366]);
   tableRow(pages[5], ["Average balance", "Ending net assets / participants with account balances"], 42, 106, [160, 366]);
   tableRow(pages[5], ["Direct admin fee bps", "Reported administrative fees / ending net assets x 10,000"], 42, 82, [160, 366]);
+  tableRow(pages[5], ["Net cash flow", "Total contributions - benefits paid - administrative fees"], 42, 58, [160, 366]);
 
   return pages;
 }

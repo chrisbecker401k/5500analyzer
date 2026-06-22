@@ -10,7 +10,8 @@ const GREEN = "0.776 0.855 0.553";
 const LIGHT_BLUE = "0.604 0.784 0.890";
 const TEXT = "0.329 0.345 0.373";
 const MUTED = "0.420 0.459 0.522";
-const BORDER = "0.878 0.906 0.941";
+const BORDER = "0.851 0.871 0.886";
+const HEADER_LINE = "0.851 0.871 0.894";
 const PANEL = "0.969 0.976 0.984";
 const EVERHART_GRAY = "0.620 0.620 0.640";
 const ROW_STRIPE = "0.965 0.973 0.984";
@@ -24,9 +25,18 @@ type SvgPath = {
   fill: string;
 };
 
+type SvgRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fill: string;
+};
+
 type SvgLogo = {
   viewBox: [number, number, number, number];
   paths: SvgPath[];
+  rects: SvgRect[];
 };
 
 const logoCache = new Map<string, SvgLogo | null>();
@@ -132,16 +142,22 @@ function hexToPdfColor(value: string) {
   return `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)}`;
 }
 
-function loadSvgLogo(kind: "color" | "white") {
+function loadSvgAsset(kind: "color" | "white" | "calendar") {
   if (logoCache.has(kind)) return logoCache.get(kind);
 
-  const fileName = kind === "color" ? "everhart-advisors-color.svg" : "everhart-advisors-white.svg";
+  const fileName =
+    kind === "color"
+      ? "everhart-advisors-color.svg"
+      : kind === "white"
+        ? "everhart-advisors-white.svg"
+        : "calendar-icon-transparent.svg";
   const filePath = path.join(process.cwd(), "public", "logos", fileName);
   try {
     const svg = fs.readFileSync(filePath, "utf8");
     const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
     const pathMatches = [...svg.matchAll(/<path[^>]*d="([^"]+)"[^>]*fill="([^"]+)"/g)];
-    if (!viewBoxMatch || pathMatches.length === 0) {
+    const rectMatches = [...svg.matchAll(/<rect[^>]*x="([^"]+)"[^>]*y="([^"]+)"[^>]*width="([^"]+)"[^>]*height="([^"]+)"[^>]*fill="([^"]+)"/g)];
+    if (!viewBoxMatch || (pathMatches.length === 0 && rectMatches.length === 0)) {
       logoCache.set(kind, null);
       return null;
     }
@@ -151,7 +167,14 @@ function loadSvgLogo(kind: "color" | "white") {
       d: match[1],
       fill: hexToPdfColor(match[2])
     }));
-    const parsed = { viewBox, paths };
+    const rects = rectMatches.map((match) => ({
+      x: Number(match[1]),
+      y: Number(match[2]),
+      width: Number(match[3]),
+      height: Number(match[4]),
+      fill: hexToPdfColor(match[5])
+    }));
+    const parsed = { viewBox, paths, rects };
     logoCache.set(kind, parsed);
     return parsed;
   } catch {
@@ -193,14 +216,46 @@ function drawSvgPath(page: CommandPage, svgPath: SvgPath, viewBox: [number, numb
   }
 }
 
+function drawSvgRect(page: CommandPage, svgRect: SvgRect, viewBox: [number, number, number, number], x: number, y: number, width: number) {
+  const [, , viewBoxWidth, viewBoxHeight] = viewBox;
+  const scale = width / viewBoxWidth;
+  rect(
+    page,
+    x + svgRect.x * scale,
+    y + (viewBoxHeight - svgRect.y - svgRect.height) * scale,
+    svgRect.width * scale,
+    svgRect.height * scale,
+    svgRect.fill
+  );
+}
+
 function svgLogo(page: CommandPage, kind: "color" | "white", x: number, y: number, width: number) {
-  const logo = loadSvgLogo(kind);
+  const logo = loadSvgAsset(kind);
   if (!logo) {
     everhartLogo(page, x, y + width * 0.22, width / 84, kind === "white" ? "1 1 1" : EVERHART_GRAY);
     return;
   }
 
   logo.paths.forEach((svgPath) => drawSvgPath(page, svgPath, logo.viewBox, x, y, width));
+  logo.rects.forEach((svgRect) => drawSvgRect(page, svgRect, logo.viewBox, x, y, width));
+}
+
+function svgIcon(page: CommandPage, kind: "calendar", x: number, y: number, width: number) {
+  const icon = loadSvgAsset(kind);
+  if (!icon) return;
+  icon.paths.forEach((svgPath) => drawSvgPath(page, svgPath, icon.viewBox, x, y, width));
+  icon.rects.forEach((svgRect) => drawSvgRect(page, svgRect, icon.viewBox, x, y, width));
+}
+
+function calendarIcon(page: CommandPage, x: number, y: number, size: number) {
+  roundedRect(page, x, y + 1, size, size - 1, 3, BLUE);
+  rect(page, x + 2, y + size - 9, size - 4, 4, "1 1 1");
+  rect(page, x + 3, y + 3, size - 6, size - 13, "1 1 1");
+  [0, 1, 2].forEach((column) => {
+    [0, 1].forEach((row) => {
+      rect(page, x + 6 + column * 8, y + 7 + row * 7, 3, 3, BLUE);
+    });
+  });
 }
 
 function everhartLogo(page: CommandPage, x: number, y: number, scale = 1, color = EVERHART_GRAY) {
@@ -234,7 +289,7 @@ function header(page: CommandPage, title: string, pageNumber: number) {
   svgLogo(page, "color", 42, 734, 74);
   const headerTitle = title.toUpperCase();
   text(page, headerTitle, 570 - headerTitle.length * 4.6, 750, 8.5, "F2", BLUE);
-  line(page, 110, 704, 502, 704, "0.820 0.850 0.880", 0.7);
+  line(page, 110, 714, 502, 714, HEADER_LINE, 0.7);
   text(page, `401(k) Report | External discussion materials`, 236, 26, 7, "F1", "0.620 0.620 0.620");
   text(page, String(pageNumber), 552, 26, 7, "F1", "0.620 0.620 0.620");
 }
@@ -243,7 +298,7 @@ function metricCard(page: CommandPage, label: string, value: string, helper: str
   const valueSize = value.length > 25 ? 10 : value.length > 19 ? 12 : value.length > 14 ? 14 : 18;
   roundedRect(page, x, y, width, 76, 10, "1 1 1");
   roundedRect(page, x, y, width, 76, 10, BORDER, true);
-  rect(page, x, y, 4, 76, accent);
+  roundedRect(page, x, y, 4, 76, 2, accent);
   text(page, label.toUpperCase(), x + 14, y + 52, 7, "F2", "0.640 0.650 0.670");
   text(page, value, x + 14, y + 28, valueSize, "F2", TEXT);
   text(page, helper, x + 14, y + 12, 8, "F1", MUTED);
@@ -252,7 +307,7 @@ function metricCard(page: CommandPage, label: string, value: string, helper: str
 function providerCard(page: CommandPage, label: string, value: string, helper: string, x: number, y: number, width: number, accent: string) {
   roundedRect(page, x, y, width, 86, 10, "1 1 1");
   roundedRect(page, x, y, width, 86, 10, BORDER, true);
-  rect(page, x, y, width, 4, accent);
+  roundedRect(page, x, y, width, 4, 2, accent);
   text(page, label.toUpperCase(), x + 10, y + 62, 7, "F2", "0.640 0.650 0.670");
   wrap(value, 18).slice(0, 2).forEach((lineText, index) => text(page, lineText, x + 10, y + 42 - index * 11, 9, "F2", TEXT));
   text(page, helper, x + 10, y + 12, 7.5, "F1", MUTED);
@@ -270,8 +325,9 @@ function barMetric(page: CommandPage, label: string, value: string, x: number, y
 function tableRow(page: CommandPage, columns: string[], x: number, y: number, widths: number[], bold = false, background?: string) {
   const rowHeight = bold ? 22 : 30;
   const totalWidth = widths.reduce((sum, width) => sum + width, 0);
-  if (bold) rect(page, x, y - 10, widths.reduce((sum, width) => sum + width, 0), rowHeight, BLUE);
-  if (!bold && background) rect(page, x, y - 18, totalWidth, rowHeight, background);
+  const rowY = bold ? y - 10 : y - 18;
+  if (bold) rect(page, x, rowY, totalWidth, rowHeight, BLUE);
+  if (!bold && background) rect(page, x, rowY, totalWidth, rowHeight, background);
   columns.forEach((column, index) => {
     const color = bold ? "1 1 1" : TEXT;
     const font = bold ? "F2" : "F1";
@@ -282,7 +338,12 @@ function tableRow(page: CommandPage, columns: string[], x: number, y: number, wi
       text(page, lineText, x + 8 + widths.slice(0, index).reduce((sum, width) => sum + width, 0), y - lineIndex * 8, size, font, color);
     });
   });
-  line(page, x, y - (bold ? 10 : 18), x + totalWidth, y - (bold ? 10 : 18), "0.800 0.830 0.870", 0.5);
+  rect(page, x, rowY, totalWidth, rowHeight, BORDER, true);
+  widths.slice(0, -1).reduce((cursor, width) => {
+    const next = cursor + width;
+    line(page, next, rowY, next, rowY + rowHeight, BORDER, 0.5);
+    return next;
+  }, x);
 }
 
 function topicBullet(page: CommandPage, number: string, title: string, body: string, x: number, y: number) {
@@ -372,10 +433,10 @@ function makeReport(params: URLSearchParams) {
 
   header(pages[1], "Executive Summary", 2);
   text(pages[1], "Executive summary", 42, 680, 20, "F2", TEXT);
-  paragraph(pages[1], `This review translates the plan's ${planYear} Form 5500 filing and audited financial statement package into a concise, plan-sponsor-friendly discussion document. It highlights what can be observed from public filings, where the plan appears strong, and which items should be validated with current provider disclosures and plan records.`, 42, 644, 128, 8.5, 12);
-  metricCard(pages[1], "Ending Net Assets", compactMoney(params.get("endingAssets")), `${percentLabel(params.get("assetGrowthPercent"))} year-over-year increase`, 42, 532, 166, GREEN);
-  metricCard(pages[1], "Participants with Balances", numberLabel(params.get("participantsWithBalances")), `${numberLabel(activeParticipants)} active participants`, 226, 532, 166, LIGHT_BLUE);
-  metricCard(pages[1], "Net Asset Change", compactMoney(params.get("netAssetChange")), "Includes investment and cash-flow activity", 410, 532, 166, ORANGE);
+  paragraph(pages[1], `This review translates the plan's ${planYear} Form 5500 filing and audited financial statement package into a concise, plan-sponsor-friendly discussion document. It highlights what can be observed from public filings, where the plan appears strong, and which items should be validated with current provider disclosures and plan records.`, 42, 644, 136, 8.5, 12);
+  metricCard(pages[1], "Ending Net Assets", compactMoney(params.get("endingAssets")), `${percentLabel(params.get("assetGrowthPercent"))} year-over-year increase`, 42, 532, 160, GREEN);
+  metricCard(pages[1], "Participants with Balances", numberLabel(params.get("participantsWithBalances")), `${numberLabel(activeParticipants)} active participants`, 226, 532, 160, LIGHT_BLUE);
+  metricCard(pages[1], "Net Asset Change", compactMoney(params.get("netAssetChange")), "Includes investment and cash-flow activity", 408, 532, 160, ORANGE);
   text(pages[1], "Plan confidence lens", 42, 474, 13, "F2", TEXT);
   tableRow(pages[1], ["Dimension", "Signal", "What the filing suggests"], 42, 452, [110, 90, 326], true);
   [
@@ -384,14 +445,14 @@ function makeReport(params: URLSearchParams) {
     ["Fee visibility", "Visible", "Schedule C identifies direct advisory and recordkeeping compensation; a complete fee review should still include service agreements and participant fee disclosures."],
     ["Plan design", "Opportunity", "The plan has auto-enrollment and permits pretax and after-tax contributions, but no matching or discretionary employer contributions were made."]
   ].forEach((row, index) => tableRow(pages[1], row, 42, 426 - index * 26, [110, 90, 326], false, index % 2 === 1 ? ROW_STRIPE : undefined));
-  roundedRect(pages[1], 42, 78, 528, 198, 12, PANEL);
-  roundedRect(pages[1], 42, 78, 528, 198, 12, BORDER, true);
-  rect(pages[1], 42, 78, 5, 198, ORANGE);
+  roundedRect(pages[1], 42, 68, 528, 208, 12, PANEL);
+  roundedRect(pages[1], 42, 68, 528, 208, 12, BORDER, true);
+  roundedRect(pages[1], 42, 68, 5, 208, 2.5, ORANGE);
   text(pages[1], "Top 3 items to validate with plan records", 60, 238, 13, "F2", TEXT);
   paragraph(pages[1], "These are not conclusions from the filing. They are high-value discussion points for a plan sponsor or committee.", 60, 216, 88, 7.5, 10, MUTED);
-  topicBullet(pages[1], "1", "Fee documentation", "Confirm direct and indirect compensation using 408(b)(2), 404a-5, fund expenses, and service agreements.", 60, 184);
-  topicBullet(pages[1], "2", "Participant behavior", "Review terminated balances, loan usage, distribution activity, and education opportunities.", 60, 142);
-  topicBullet(pages[1], "3", "Provider accountability", "Clarify which provider owns each part of the annual fiduciary process and how decisions are documented.", 60, 100);
+  topicBullet(pages[1], "1", "Fee documentation", "Confirm direct and indirect compensation using 408(b)(2), 404a-5, fund expenses, and service agreements.", 60, 188);
+  topicBullet(pages[1], "2", "Participant behavior", "Review terminated balances, loan usage, distribution activity, and education opportunities.", 60, 148);
+  topicBullet(pages[1], "3", "Provider accountability", "Clarify which provider owns each part of the annual fiduciary process and how decisions are documented.", 60, 108);
 
   header(pages[2], "Form 5500 Snapshot", 3);
   text(pages[2], "Plan economics and cash flow", 42, 680, 20, "F2", TEXT);
@@ -406,7 +467,7 @@ function makeReport(params: URLSearchParams) {
     roundedRect(pages[2], 158, y - 10, Math.max(8, Math.min(62, (Math.abs(numberValue(item[1]) ?? 0) / (numberValue(params.get("endingAssets")) || 1)) * 62)), 18, 4, item[2]!);
     text(pages[2], compactMoney(item[1]!), 248, y, 7.2, "F2", TEXT);
   });
-  text(pages[2], "Net cash flow = contributions less benefits paid and administrative expenses.", 60, 394, 6.8, "F1", "0.660 0.680 0.700");
+  text(pages[2], "Net cash flow = contributions less benefits paid and administrative expenses.", 60, 386, 6.8, "F1", "0.660 0.680 0.700");
   roundedRect(pages[2], 314, 374, 256, 226, 12, "1 1 1");
   roundedRect(pages[2], 314, 374, 256, 226, 12, BORDER, true);
   text(pages[2], `${planYear} sources and uses`, 330, 574, 12, "F2", TEXT);
@@ -452,7 +513,7 @@ function makeReport(params: URLSearchParams) {
   });
   roundedRect(pages[3], 42, 38, 528, 76, 12, "1 1 1");
   roundedRect(pages[3], 42, 38, 528, 76, 12, BORDER, true);
-  rect(pages[3], 42, 38, 5, 76, BLUE);
+  roundedRect(pages[3], 42, 38, 5, 76, 2.5, BLUE);
   text(pages[3], "High-value topics for committee discussion", 62, 94, 12, "F2", TEXT);
   ["Are direct and indirect fees documented, benchmarked, and tied to service value?", "Does the plan design support recruiting, retention, and participant outcomes?", "Are terminated participant balances, loans, and distribution activity monitored as part of the annual fiduciary process?"].forEach((item, index) => {
     circle(pages[3], 66, 75 - index * 13, 2, GREEN);
@@ -467,10 +528,10 @@ function makeReport(params: URLSearchParams) {
     const accent = index === 0 ? GREEN : index === 1 ? LIGHT_BLUE : ORANGE;
     roundedRect(pages[4], x, 438, 160, 124, 12, "1 1 1");
     roundedRect(pages[4], x, 438, 160, 124, 12, BORDER, true);
-    circle(pages[4], x + 24, 536, 14, accent);
-    text(pages[4], item[0], x + 16, 532, 9, "F2", "1 1 1");
+    circle(pages[4], x + 23, 536, 12, accent);
+    text(pages[4], item[0], x + 15.8, 532.3, 8, "F2", "1 1 1");
     text(pages[4], item[1], x + 18, 508, 15, "F2", TEXT);
-    paragraph(pages[4], item[2], x + 18, 486, 31, 7.4, 9.5, MUTED);
+    paragraph(pages[4], item[2], x + 18, 486, 36, 7.4, 9.5, MUTED);
   });
   roundedRect(pages[4], 42, 206, 528, 186, 16, BLUE);
   svgLogo(pages[4], "white", 74, 328, 132);
@@ -483,8 +544,9 @@ function makeReport(params: URLSearchParams) {
   roundedRect(pages[4], 310, 220, 112, 24, 12, "0.180 0.490 0.700");
   text(pages[4], "Benchmarking decision", 326, 228, 8, "F2", "1 1 1");
   roundedRect(pages[4], 436, 214, 112, 38, 12, "1 1 1");
-  text(pages[4], "Schedule", 468, 230, 9, "F2", BLUE);
-  text(pages[4], "Consultation  ->", 468, 218, 9, "F2", BLUE);
+  calendarIcon(pages[4], 452, 224, 16);
+  text(pages[4], "Schedule", 474, 230, 9, "F2", BLUE);
+  text(pages[4], "Consultation  ->", 474, 218, 9, "F2", BLUE);
   roundedRect(pages[4], 42, 62, 528, 116, 12, PANEL);
   roundedRect(pages[4], 42, 62, 528, 116, 12, BORDER, true);
   text(pages[4], "Documents that would help validate this review", 62, 144, 12, "F2", TEXT);
@@ -512,14 +574,17 @@ function makeReport(params: URLSearchParams) {
     "No conclusion is made regarding whether any fee is reasonable, any investment is prudent, or any fiduciary process is sufficient."
   ].forEach((item, index) => {
     circle(pages[5], 64, 346 - index * 26, 2, GREEN);
-    paragraph(pages[5], item, 76, 350 - index * 26, 84, 7.2, 9, TEXT);
+    paragraph(pages[5], item, 76, 350 - index * 26, 104, 7.2, 9, TEXT);
   });
   text(pages[5], "Selected calculations", 42, 182, 13, "F2", TEXT);
   tableRow(pages[5], ["Calculation", "Formula"], 42, 154, [160, 366], true);
-  tableRow(pages[5], ["Asset growth", "(Ending net assets - beginning net assets) / beginning net assets"], 42, 130, [160, 366]);
-  tableRow(pages[5], ["Average balance", "Ending net assets / participants with account balances"], 42, 106, [160, 366]);
-  tableRow(pages[5], ["Direct admin fee bps", "Reported administrative fees / ending net assets x 10,000"], 42, 82, [160, 366]);
-  tableRow(pages[5], ["Net cash flow", "Total contributions - benefits paid - administrative fees"], 42, 58, [160, 366]);
+  [
+    ["Asset growth", "(Ending net assets - beginning net assets) / beginning net assets"],
+    ["Average balance", "Ending net assets / participants with account balances"],
+    ["Direct admin fee bps", "Reported administrative fees / ending net assets x 10,000"],
+    ["Net cash flow", "Total contributions - benefits paid - administrative fees"]
+  ].forEach((row, index) => tableRow(pages[5], row, 42, 130 - index * 24, [160, 366], false, index % 2 === 1 ? ROW_STRIPE : undefined));
+  text(pages[5], "Prepared by Everhart Advisors. External discussion materials. Not intended as legal or tax advice.", 42, 34, 6.8, "F1", "0.620 0.620 0.620");
 
   return pages;
 }

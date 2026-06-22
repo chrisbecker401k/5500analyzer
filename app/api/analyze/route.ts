@@ -59,14 +59,32 @@ function installPdfServerPolyfills() {
 async function extractPdfText(buffer: Buffer) {
   installPdfServerPolyfills();
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(
-    join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs")
-  ).toString();
-  const document = await pdfjs.getDocument({
+  const makeOptions = () => ({
     data: new Uint8Array(buffer),
     disableFontFace: true,
     useSystemFonts: true
-  }).promise;
+  });
+  const workerCandidates = [
+    join(process.cwd(), "public/pdf.worker.min.mjs"),
+    join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs"),
+    join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs")
+  ];
+
+  let document;
+  let lastError: unknown;
+  for (const workerPath of workerCandidates) {
+    try {
+      pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString();
+      document = await pdfjs.getDocument(makeOptions()).promise;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!document) {
+    throw lastError instanceof Error ? lastError : new Error("Unable to initialize PDF text extraction.");
+  }
   const pages: string[] = [];
 
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {

@@ -16,7 +16,7 @@ const PANEL = "0.969 0.976 0.984";
 const EVERHART_GRAY = "0.620 0.620 0.640";
 const ROW_STRIPE = "0.965 0.973 0.984";
 const CONTENT_LEFT = 42;
-const CONTENT_RIGHT = 570;
+const CONTENT_RIGHT = 568;
 const CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
 
 type CommandPage = {
@@ -174,30 +174,43 @@ function loadSvgAsset(kind: "color" | "white" | "calendar") {
       ? "everhart-advisors-color.svg"
       : kind === "white"
         ? "everhart-advisors-white.svg"
-        : "calendar-icon-transparent.svg";
+        : "calendar-icon-white-background.svg";
   const filePath = path.join(process.cwd(), "public", "logos", fileName);
   try {
     const svg = fs.readFileSync(filePath, "utf8");
     const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
-    const pathMatches = [...svg.matchAll(/<path[^>]*d="([^"]+)"[^>]*fill="([^"]+)"/g)];
-    const rectMatches = [...svg.matchAll(/<rect[^>]*x="([^"]+)"[^>]*y="([^"]+)"[^>]*width="([^"]+)"[^>]*height="([^"]+)"[^>]*fill="([^"]+)"/g)];
-    if (!viewBoxMatch || (pathMatches.length === 0 && rectMatches.length === 0)) {
+    const pathTags = [...svg.matchAll(/<path\b[^>]*>/g)].map((match) => match[0]);
+    const rectTags = [...svg.matchAll(/<rect\b[^>]*>/g)].map((match) => match[0]);
+    if (!viewBoxMatch || (pathTags.length === 0 && rectTags.length === 0)) {
       logoCache.set(kind, null);
       return null;
     }
 
     const viewBox = viewBoxMatch[1].split(/\s+/).map(Number) as [number, number, number, number];
-    const paths = pathMatches.map((match) => ({
-      d: match[1],
-      fill: hexToPdfColor(match[2])
-    }));
-    const rects = rectMatches.map((match) => ({
-      x: Number(match[1]),
-      y: Number(match[2]),
-      width: Number(match[3]),
-      height: Number(match[4]),
-      fill: hexToPdfColor(match[5])
-    }));
+    const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}="([^"]+)"`))?.[1];
+    const paths = pathTags.flatMap((tag) => {
+      const d = attr(tag, "d");
+      const fill = attr(tag, "fill");
+      return d && fill ? [{ d, fill: hexToPdfColor(fill) }] : [];
+    });
+    const rects = rectTags.flatMap((tag) => {
+      const width = attr(tag, "width");
+      const height = attr(tag, "height");
+      const fill = attr(tag, "fill");
+      return width && height && fill
+        ? [{
+            x: Number(attr(tag, "x") || 0),
+            y: Number(attr(tag, "y") || 0),
+            width: Number(width),
+            height: Number(height),
+            fill: hexToPdfColor(fill)
+          }]
+        : [];
+    });
+    if (paths.length === 0 && rects.length === 0) {
+      logoCache.set(kind, null);
+      return null;
+    }
     const parsed = { viewBox, paths, rects };
     logoCache.set(kind, parsed);
     return parsed;
@@ -210,14 +223,18 @@ function loadSvgAsset(kind: "color" | "white" | "calendar") {
 function drawSvgPath(page: CommandPage, svgPath: SvgPath, viewBox: [number, number, number, number], x: number, y: number, width: number) {
   const [, , viewBoxWidth, viewBoxHeight] = viewBox;
   const scale = width / viewBoxWidth;
-  const tokens = svgPath.d.match(/[MLCZ]|[-+]?\d*\.?\d+/g) || [];
+  const tokens = svgPath.d.match(/[MLHVCSQTAZ]|[-+]?\d*\.?\d+/g) || [];
   const commands: string[] = [];
   let index = 0;
   let command = "";
+  let currentX = 0;
+  let currentY = 0;
+  const px = (value: number) => x + value * scale;
+  const py = (value: number) => y + (viewBoxHeight - value) * scale;
 
   while (index < tokens.length) {
     const token = tokens[index++];
-    if (/^[MLCZ]$/.test(token)) {
+    if (/^[MLHVCSQTAZ]$/.test(token)) {
       command = token;
       if (command === "Z") {
         commands.push("h");
@@ -229,9 +246,25 @@ function drawSvgPath(page: CommandPage, svgPath: SvgPath, viewBox: [number, numb
       const xToken = token;
       const yToken = tokens[index++];
       if (!xToken || !yToken) break;
-      const px = x + Number(xToken) * scale;
-      const py = y + (viewBoxHeight - Number(yToken)) * scale;
-      commands.push(`${px.toFixed(2)} ${py.toFixed(2)} ${command === "M" ? "m" : "l"}`);
+      currentX = Number(xToken);
+      currentY = Number(yToken);
+      commands.push(`${px(currentX).toFixed(2)} ${py(currentY).toFixed(2)} ${command === "M" ? "m" : "l"}`);
+    } else if (command === "H") {
+      currentX = Number(token);
+      commands.push(`${px(currentX).toFixed(2)} ${py(currentY).toFixed(2)} l`);
+    } else if (command === "V") {
+      currentY = Number(token);
+      commands.push(`${px(currentX).toFixed(2)} ${py(currentY).toFixed(2)} l`);
+    } else if (command === "C") {
+      const x1 = Number(token);
+      const y1 = Number(tokens[index++]);
+      const x2 = Number(tokens[index++]);
+      const y2 = Number(tokens[index++]);
+      const x3 = Number(tokens[index++]);
+      const y3 = Number(tokens[index++]);
+      currentX = x3;
+      currentY = y3;
+      commands.push(`${px(x1).toFixed(2)} ${py(y1).toFixed(2)} ${px(x2).toFixed(2)} ${py(y2).toFixed(2)} ${px(x3).toFixed(2)} ${py(y3).toFixed(2)} c`);
     }
   }
 
@@ -267,20 +300,20 @@ function svgLogo(page: CommandPage, kind: "color" | "white", x: number, y: numbe
 function svgIcon(page: CommandPage, kind: "calendar", x: number, y: number, width: number) {
   const icon = loadSvgAsset(kind);
   if (!icon) return;
+  icon.rects.filter((svgRect) => svgRect.fill === "1.000 1.000 1.000").forEach((svgRect) => drawSvgRect(page, svgRect, icon.viewBox, x, y, width));
   icon.paths.forEach((svgPath) => drawSvgPath(page, svgPath, icon.viewBox, x, y, width));
-  icon.rects.forEach((svgRect) => drawSvgRect(page, svgRect, icon.viewBox, x, y, width));
+  icon.rects.filter((svgRect) => svgRect.fill !== "1.000 1.000 1.000").forEach((svgRect) => drawSvgRect(page, svgRect, icon.viewBox, x, y, width));
 }
 
 function calendarIcon(page: CommandPage, x: number, y: number, size: number) {
   roundedRect(page, x, y, size, size, 3, BLUE, true);
   line(page, x + 2, y + size - 5, x + size - 2, y + size - 5, BLUE, 0.8);
-  line(page, x + 4, y + size - 1, x + 4, y + size - 4, BLUE, 1.2);
-  line(page, x + size - 4, y + size - 1, x + size - 4, y + size - 4, BLUE, 1.2);
-  [0, 1, 2].forEach((column) => {
-    [0, 1].forEach((row) => {
-      rect(page, x + 4 + column * 4, y + 4 + row * 4, 1.6, 1.6, BLUE);
-    });
-  });
+  line(page, x + 4, y + size + 1, x + 4, y + size - 4, BLUE, 1);
+  line(page, x + size - 4, y + size + 1, x + size - 4, y + size - 4, BLUE, 1);
+  line(page, x + 4, y + 5, x + size - 4, y + 5, BLUE, 0.55);
+  line(page, x + 4, y + 9, x + size - 4, y + 9, BLUE, 0.55);
+  line(page, x + 7, y + 3, x + 7, y + size - 7, BLUE, 0.55);
+  line(page, x + 11, y + 3, x + 11, y + size - 7, BLUE, 0.55);
 }
 
 function everhartLogo(page: CommandPage, x: number, y: number, scale = 1, color = EVERHART_GRAY) {
@@ -473,29 +506,29 @@ function makeReport(params: URLSearchParams) {
   header(pages[1], "Executive Summary", 2);
   text(pages[1], "Executive summary", 42, 680, 20, "F2", TEXT);
   paragraph(pages[1], `This review translates the plan's ${planYear} Form 5500 filing and audited financial statement package into a concise, plan-sponsor-friendly discussion document. It highlights what can be observed from public filings, where the plan appears strong, and which items should be validated with current provider disclosures and plan records.`, 42, 644, 136, 8.5, 12);
-  metricCard(pages[1], "Ending Net Assets", compactMoney(params.get("endingAssets")), `${percentLabel(params.get("assetGrowthPercent"))} year-over-year increase`, 42, 538, 160, GREEN);
-  metricCard(pages[1], "Participants with Balances", numberLabel(params.get("participantsWithBalances")), `${numberLabel(activeParticipants)} active participants`, 226, 538, 160, LIGHT_BLUE);
-  metricCard(pages[1], "Net Asset Change", compactMoney(params.get("netAssetChange")), "Investment and cash-flow activity", 408, 538, 160, ORANGE);
-  text(pages[1], "Plan confidence lens", 42, 506, 13, "F2", TEXT);
-  tableRow(pages[1], ["Dimension", "Signal", "What the filing suggests"], 42, 486, [110, 82, 334], true);
+  metricCard(pages[1], "Ending Net Assets", compactMoney(params.get("endingAssets")), `${percentLabel(params.get("assetGrowthPercent"))} year-over-year increase`, 42, 532, 160, GREEN);
+  metricCard(pages[1], "Participants with Balances", numberLabel(params.get("participantsWithBalances")), `${numberLabel(activeParticipants)} active participants`, 226, 532, 160, LIGHT_BLUE);
+  metricCard(pages[1], "Net Asset Change", compactMoney(params.get("netAssetChange")), "Investment and cash-flow activity", 408, 532, 160, ORANGE);
+  text(pages[1], "Plan confidence lens", 42, 500, 13, "F2", TEXT);
+  tableRow(pages[1], ["Dimension", "Signal", "What the filing suggests"], 42, 480, [110, 82, 334], true);
   [
     ["Plan growth", "Strong", `Assets increased from ${compactMoney(params.get("beginningAssets"))} to ${compactMoney(params.get("endingAssets"))}, supported primarily by positive investment income.`],
     ["Participant engagement", "Review", `The plan has ${numberLabel(params.get("participantsWithBalances"))} participants with account balances and ${numberLabel(separatedParticipants)} separated participants entitled to future benefits.`],
     ["Fee visibility", "Visible", "Schedule C identifies direct advisory and recordkeeping compensation; a complete fee review should still include service agreements and participant fee disclosures."],
     ["Plan design", "Opportunity", "The plan has auto-enrollment and permits pretax and after-tax contributions, but no matching or discretionary employer contributions were made."]
-  ].forEach((row, index) => tableRow(pages[1], row, 42, 464 - index * 28, [110, 82, 334], false, index % 2 === 1 ? ROW_STRIPE : undefined));
+  ].forEach((row, index) => tableRow(pages[1], row, 42, 458 - index * 28, [110, 82, 334], false, index % 2 === 1 ? ROW_STRIPE : undefined));
   roundedRect(pages[1], 42, 118, 528, 202, 12, PANEL);
   roundedRect(pages[1], 42, 118, 528, 202, 12, BORDER, true);
   roundedRect(pages[1], 42, 118, 5, 202, 2.5, ORANGE);
   text(pages[1], "Top 3 items to validate with plan records", 60, 284, 13, "F2", TEXT);
-  paragraph(pages[1], "These are not conclusions from the filing. They are high-value discussion points for a plan sponsor or committee.", 60, 262, 112, 7.5, 10, MUTED);
+  paragraph(pages[1], "These are not conclusions from the filing. They are high-value discussion points for a plan sponsor or committee.", 60, 262, 130, 7.5, 10, MUTED);
   topicBullet(pages[1], "1", "Fee documentation", "Confirm direct and indirect compensation using 408(b)(2), 404a-5, fund expenses, and service agreements.", 60, 232);
   topicBullet(pages[1], "2", "Participant behavior", "Review terminated balances, loan usage, distribution activity, and education opportunities.", 60, 196);
   topicBullet(pages[1], "3", "Provider accountability", "Clarify which provider owns each part of the annual fiduciary process and how decisions are documented.", 60, 160);
 
   header(pages[2], "Form 5500 Snapshot", 3);
   text(pages[2], "Plan economics and cash flow", 42, 680, 20, "F2", TEXT);
-  paragraph(pages[2], `The ${planYear} filing shows a plan with meaningful retirement plan assets, positive investment results, and modest negative net cash flow from contributions less benefits and expenses. The analysis below should be reconciled with current recordkeeper reporting before decisions are made.`, 42, 644, 128, 8.5, 12);
+  paragraph(pages[2], `The ${planYear} filing shows a plan with meaningful retirement plan assets, positive investment results, and modest negative net cash flow from contributions less benefits and expenses. The analysis below should be reconciled with current recordkeeper reporting before decisions are made.`, 42, 644, 136, 8.5, 12);
   roundedRect(pages[2], 42, 374, 252, 226, 12, "1 1 1");
   roundedRect(pages[2], 42, 374, 252, 226, 12, BORDER, true);
   text(pages[2], "Asset bridge", 58, 574, 12, "F2", TEXT);
@@ -539,32 +572,32 @@ function makeReport(params: URLSearchParams) {
   metricCard(pages[3], "Recordkeeper", money(params.get("recordkeepingFees")), "", 234, 326, 146, LIGHT_BLUE);
   metricCard(pages[3], "Advisor", money(params.get("advisoryFees")), "", 408, 326, 146, ORANGE);
   text(pages[3], "Plan design signals", 42, 282, 13, "F2", TEXT);
-  tableRow(pages[3], ["Feature", "Observed in filing / audited notes"], 42, 252, [82, 160], true);
+  tableRow(pages[3], ["Feature", "Observed in filing / audited notes"], 42, 252, [100, 142], true);
   (planDesignSignals.length ? planDesignSignals : ["Eligibility: Requires additional plan records.", "Auto-enrollment: Requires additional plan records.", "Employer contributions: Requires additional plan records.", "Vesting: Requires additional plan records."]).slice(0, 4).forEach((signal, index) => {
     const [feature, ...rest] = signal.split(":");
-    tableRow(pages[3], [feature || "Feature", rest.join(":").trim() || signal], 42, 230 - index * 28, [82, 160], false, index % 2 === 1 ? ROW_STRIPE : undefined);
+    tableRow(pages[3], [feature || "Feature", rest.join(":").trim() || signal], 42, 230 - index * 28, [100, 142], false, index % 2 === 1 ? ROW_STRIPE : undefined);
   });
   text(pages[3], "Investment menu signals", 314, 282, 13, "F2", TEXT);
-  tableRow(pages[3], ["Area", "Observed in filing / audited notes"], 314, 252, [82, 160], true);
+  tableRow(pages[3], ["Area", "Observed in filing / audited notes"], 314, 252, [100, 142], true);
   (investmentMenuSignals.length ? investmentMenuSignals : ["Menu assets: Requires additional plan records.", "Mutual funds: Requires additional plan records.", "Common collective trusts: Requires additional plan records.", "Participant loans: Requires additional plan records."]).slice(0, 4).forEach((signal, index) => {
     const [area, ...rest] = signal.split(":");
-    tableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [82, 160], false, index % 2 === 1 ? ROW_STRIPE : undefined);
+    tableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [100, 142], false, index % 2 === 1 ? ROW_STRIPE : undefined);
   });
   roundedRect(pages[3], 42, 46, 528, 72, 12, "1 1 1");
   roundedRect(pages[3], 42, 46, 528, 72, 12, BORDER, true);
   roundedRect(pages[3], 42, 46, 5, 72, 2.5, BLUE);
   text(pages[3], "High-value topics for committee discussion", 62, 98, 12, "F2", TEXT);
   ["Are direct and indirect fees documented, benchmarked, and tied to service value?", "Does the plan design support recruiting, retention, and participant outcomes?", "Are terminated participant balances, loans, and distribution activity monitored as part of the annual fiduciary process?"].forEach((item, index) => {
-    circle(pages[3], 66, 79 - index * 13, 2, GREEN);
-    text(pages[3], item, 78, 76 - index * 13, 6.6, "F1", TEXT);
+    circle(pages[3], 66, 83 - index * 13, 2, GREEN);
+    text(pages[3], item, 78, 80 - index * 13, 6.6, "F1", TEXT);
   });
 
   header(pages[4], "From Insight To Action", 5);
   text(pages[4], "From insight to action", 42, 680, 24, "F2", TEXT);
-  paragraph(pages[4], "Public filings are a strong starting point, but they do not show the full fiduciary process. The next step is to compare the Form 5500 snapshot against the plan's actual provider disclosures, plan documents, investment policy, committee records, participant experience, and business objectives.", 42, 640, 136, 9.5, 14);
+  paragraph(pages[4], "Public filings are a strong starting point, but they do not show the full fiduciary process. The next step is to compare the Form 5500 snapshot against the plan's actual provider disclosures, plan documents, investment policy, committee records, participant experience, and business objectives.", 42, 640, 132, 9.5, 14);
   [["01", "Confirm", "Validate Form 5500 observations against provider reports, service agreements, fee disclosures, and plan documents."], ["02", "Benchmark", "Evaluate fees, services, investment menu structure, participant behavior, and governance practices against plan size and complexity."], ["03", "Prioritize", "Identify the few actions that matter most and assign accountability across advisor, recordkeeper, auditor, payroll/TPA, and committee."]].forEach((item, index) => {
     const x = 42 + index * 184;
-    const boxY = 442;
+    const boxY = 452;
     const accent = index === 0 ? GREEN : index === 1 ? LIGHT_BLUE : ORANGE;
     roundedRect(pages[4], x, boxY, 160, 124, 12, "1 1 1");
     roundedRect(pages[4], x, boxY, 160, 124, 12, BORDER, true);
@@ -573,20 +606,20 @@ function makeReport(params: URLSearchParams) {
     text(pages[4], item[1], x + 18, boxY + 68, 15, "F2", TEXT);
     paragraph(pages[4], item[2], x + 18, boxY + 46, 39, 7.4, 9.5, MUTED);
   });
-  roundedRect(pages[4], 42, 196, 528, 178, 16, BLUE);
-  svgLogo(pages[4], "white", 74, 318, 112);
-  text(pages[4], "Recommended next step: Retirement Plan Consultation", 74, 292, 16.5, "F2", "1 1 1");
-  paragraph(pages[4], "Everhart Advisors will walk through the three highest-priority observations, identify needed documents, and determine whether deeper fee, provider, or fiduciary process benchmarking is worth pursuing.", 74, 265, 104, 7.6, 9.8, "1 1 1");
-  roundedRect(pages[4], 72, 214, 102, 24, 12, "0.180 0.490 0.700");
-  text(pages[4], "3 priority observations", 86, 222, 7.1, "F2", "1 1 1");
-  roundedRect(pages[4], 184, 214, 108, 24, 12, "0.180 0.490 0.700");
-  text(pages[4], "Missing document list", 201, 222, 7.1, "F2", "1 1 1");
-  roundedRect(pages[4], 302, 214, 108, 24, 12, "0.180 0.490 0.700");
-  text(pages[4], "Benchmarking decision", 317, 222, 7.1, "F2", "1 1 1");
-  roundedRect(pages[4], 424, 206, 132, 40, 12, "1 1 1");
-  calendarIcon(pages[4], 438, 217, 14);
-  text(pages[4], "Schedule Consultation", 460, 221, 8.1, "F2", BLUE);
-  addLink(pages[4], 424, 206, 132, 40, "https://calendly.com/chris_becker/retirement-plan-consultation");
+  roundedRect(pages[4], 42, 208, 528, 178, 16, BLUE);
+  svgLogo(pages[4], "white", 74, 330, 112);
+  text(pages[4], "Recommended next step: Retirement Plan Consultation", 74, 304, 16.5, "F2", "1 1 1");
+  paragraph(pages[4], "Everhart Advisors will walk through the three highest-priority observations, identify needed documents, and determine whether deeper fee, provider, or fiduciary process benchmarking is worth pursuing.", 74, 277, 104, 7.6, 9.8, "1 1 1");
+  roundedRect(pages[4], 72, 226, 102, 24, 12, "0.180 0.490 0.700");
+  text(pages[4], "3 priority observations", 86, 234, 7.1, "F2", "1 1 1");
+  roundedRect(pages[4], 184, 226, 108, 24, 12, "0.180 0.490 0.700");
+  text(pages[4], "Missing document list", 201, 234, 7.1, "F2", "1 1 1");
+  roundedRect(pages[4], 302, 226, 108, 24, 12, "0.180 0.490 0.700");
+  text(pages[4], "Benchmarking decision", 317, 234, 7.1, "F2", "1 1 1");
+  roundedRect(pages[4], 424, 218, 132, 40, 12, "1 1 1");
+  svgIcon(pages[4], "calendar", 438, 229, 14);
+  text(pages[4], "Schedule Consultation", 460, 233, 8.1, "F2", BLUE);
+  addLink(pages[4], 424, 218, 132, 40, "https://calendly.com/chris_becker/retirement-plan-consultation");
   roundedRect(pages[4], 42, 62, 528, 116, 12, PANEL);
   roundedRect(pages[4], 42, 62, 528, 116, 12, BORDER, true);
   text(pages[4], "Documents that would help validate this review", 62, 144, 12, "F2", TEXT);
@@ -617,7 +650,7 @@ function makeReport(params: URLSearchParams) {
   ].forEach((item, index) => {
     const y = 382 - index * 27;
     circle(pages[5], 66, y + 5, 2, GREEN);
-    paragraph(pages[5], item, 76, y + 4, 120, 7.2, 9.2, TEXT);
+    paragraph(pages[5], item, 76, y + 4, 132, 7.2, 9.2, TEXT);
   });
   text(pages[5], "Selected calculations", 42, 230, 13, "F2", TEXT);
   tableRow(pages[5], ["Calculation", "Formula"], 42, 202, [160, 366], true);

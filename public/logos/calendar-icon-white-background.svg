@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300" role="img" aria-label="Calendar icon">
+  <rect width="300" height="300" fill="#ffffff"/>
+  <path fill="#005596" fill-rule="evenodd" d="
+    M39 21H261C282.539 21 300 38.461 300 60V255C300 276.539 282.539 294 261 294H39C17.461 294 0 276.539 0 255V60C0 38.461 17.461 21 39 21Z
+    M27 49H273V89H27V49Z
+    M27 117H273V254C273 261.18 267.18 267 260 267H40C32.82 267 27 261.18 27 254V117Z"/>
+  <rect x="40" y="7" width="28" height="48" fill="#005596"/>
+  <rect x="136" y="7" width="28" height="48" fill="#005596"/>
+  <rect x="232" y="7" width="28" height="48" fill="#005596"/>
+  <rect x="62" y="144" width="27" height="27" fill="#005596"/>
+  <rect x="137" y="144" width="27" height="27" fill="#005596"/>
+  <rect x="212" y="144" width="27" height="27" fill="#005596"/>
+  <rect x="62" y="199" width="27" height="27" fill="#005596"/>
+  <rect x="137" y="199" width="27" height="27" fill="#005596"/>
+  <rect x="212" y="199" width="27" height="27" fill="#005596"/>
+</svg>

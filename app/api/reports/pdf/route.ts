@@ -272,12 +272,13 @@ function svgIcon(page: CommandPage, kind: "calendar", x: number, y: number, widt
 }
 
 function calendarIcon(page: CommandPage, x: number, y: number, size: number) {
-  roundedRect(page, x, y + 1, size, size - 1, 3, BLUE);
-  rect(page, x + 2, y + size - 9, size - 4, 4, "1 1 1");
-  rect(page, x + 3, y + 3, size - 6, size - 13, "1 1 1");
+  roundedRect(page, x, y, size, size, 3, BLUE, true);
+  line(page, x + 2, y + size - 5, x + size - 2, y + size - 5, BLUE, 0.8);
+  line(page, x + 4, y + size - 1, x + 4, y + size - 4, BLUE, 1.2);
+  line(page, x + size - 4, y + size - 1, x + size - 4, y + size - 4, BLUE, 1.2);
   [0, 1, 2].forEach((column) => {
     [0, 1].forEach((row) => {
-      rect(page, x + 5 + column * 4, y + 6 + row * 4, 2, 2, BLUE);
+      rect(page, x + 4 + column * 4, y + 4 + row * 4, 1.6, 1.6, BLUE);
     });
   });
 }
@@ -378,15 +379,6 @@ function topicBullet(page: CommandPage, number: string, title: string, body: str
   text(page, number, x + 6.1, y - 0.4, 6.8, "F2", "1 1 1");
   text(page, title, x + 24, y + 1, 8, "F2", TEXT);
   paragraph(page, body, x + 24, y - 10, 128, 7, 9, MUTED);
-}
-
-function bridgeMetric(page: CommandPage, label: string, value: string | null, x: number, y: number, width: number, color: string, direction: "start" | "positive" | "negative" | "end") {
-  const parsed = numberValue(value);
-  const valueText = direction === "negative" && parsed !== null ? `-${compactMoney(String(Math.abs(parsed)))}` : compactMoney(value);
-  roundedRect(page, x, y, width, 42, 8, "0.965 0.973 0.984");
-  roundedRect(page, x, y, 4, 42, 2, color);
-  text(page, label.toUpperCase(), x + 12, y + 25, 6.6, "F2", "0.640 0.650 0.670");
-  text(page, valueText, x + 12, y + 9, 11, "F2", TEXT);
 }
 
 function buildPdf(pages: CommandPage[]) {
@@ -507,17 +499,14 @@ function makeReport(params: URLSearchParams) {
   roundedRect(pages[2], 42, 374, 252, 226, 12, "1 1 1");
   roundedRect(pages[2], 42, 374, 252, 226, 12, BORDER, true);
   text(pages[2], "Asset bridge", 58, 574, 12, "F2", TEXT);
-  bridgeMetric(pages[2], "Beginning assets", params.get("beginningAssets"), 60, 516, 96, BLUE, "start");
-  bridgeMetric(pages[2], "Investment income", params.get("netInvestmentGain"), 174, 516, 96, GREEN, "positive");
-  bridgeMetric(pages[2], "Net cash flow", params.get("netCashFlow"), 60, 454, 96, ORANGE, (numberValue(params.get("netCashFlow")) ?? 0) < 0 ? "negative" : "positive");
-  bridgeMetric(pages[2], "Ending net assets", params.get("endingAssets"), 174, 454, 96, TEXT, "end");
-  line(pages[2], 158, 536, 171, 536, BORDER, 1);
-  text(pages[2], "+", 162, 530, 11, "F2", GREEN);
-  line(pages[2], 108, 510, 108, 500, BORDER, 1);
-  line(pages[2], 108, 500, 222, 500, BORDER, 1);
-  line(pages[2], 222, 500, 222, 496, BORDER, 1);
-  text(pages[2], (numberValue(params.get("netCashFlow")) ?? 0) < 0 ? "-" : "+", 162, 482, 11, "F2", ORANGE);
-  text(pages[2], "Net cash flow reflects contributions less benefits paid and administrative expenses.", 60, 392, 6.8, "F1", "0.660 0.680 0.700");
+  [["Beginning assets", params.get("beginningAssets"), BLUE], ["Investment income", params.get("netInvestmentGain"), GREEN], ["Net cash flow", params.get("netCashFlow"), ORANGE], ["Ending net assets", params.get("endingAssets"), TEXT]].forEach((item, index) => {
+    const y = 532 - index * 40;
+    text(pages[2], item[0]!, 60, y, 7.2, "F2", MUTED);
+    roundedRect(pages[2], 158, y - 10, 62, 18, 4, "0.965 0.973 0.984");
+    roundedRect(pages[2], 158, y - 10, Math.max(8, Math.min(62, (Math.abs(numberValue(item[1]) ?? 0) / (numberValue(params.get("endingAssets")) || 1)) * 62)), 18, 4, item[2]!);
+    text(pages[2], compactMoney(item[1]!), 248, y, 7.2, "F2", TEXT);
+  });
+  text(pages[2], "Net cash flow = contributions less benefits paid and administrative expenses.", 60, 386, 6.8, "F1", "0.660 0.680 0.700");
   roundedRect(pages[2], 314, 374, 256, 226, 12, "1 1 1");
   roundedRect(pages[2], 314, 374, 256, 226, 12, BORDER, true);
   text(pages[2], `${planYear} sources and uses`, 330, 574, 12, "F2", TEXT);
@@ -550,16 +539,16 @@ function makeReport(params: URLSearchParams) {
   metricCard(pages[3], "Recordkeeper", money(params.get("recordkeepingFees")), "", 234, 326, 146, LIGHT_BLUE);
   metricCard(pages[3], "Advisor", money(params.get("advisoryFees")), "", 408, 326, 146, ORANGE);
   text(pages[3], "Plan design signals", 42, 282, 13, "F2", TEXT);
-  tableRow(pages[3], ["Feature", "Observed in filing / audited notes"], 42, 252, [82, 170], true);
+  tableRow(pages[3], ["Feature", "Observed in filing / audited notes"], 42, 252, [82, 160], true);
   (planDesignSignals.length ? planDesignSignals : ["Eligibility: Requires additional plan records.", "Auto-enrollment: Requires additional plan records.", "Employer contributions: Requires additional plan records.", "Vesting: Requires additional plan records."]).slice(0, 4).forEach((signal, index) => {
     const [feature, ...rest] = signal.split(":");
-    tableRow(pages[3], [feature || "Feature", rest.join(":").trim() || signal], 42, 230 - index * 28, [82, 170], false, index % 2 === 1 ? ROW_STRIPE : undefined);
+    tableRow(pages[3], [feature || "Feature", rest.join(":").trim() || signal], 42, 230 - index * 28, [82, 160], false, index % 2 === 1 ? ROW_STRIPE : undefined);
   });
   text(pages[3], "Investment menu signals", 314, 282, 13, "F2", TEXT);
-  tableRow(pages[3], ["Area", "Observed in filing / audited notes"], 314, 252, [82, 170], true);
+  tableRow(pages[3], ["Area", "Observed in filing / audited notes"], 314, 252, [82, 160], true);
   (investmentMenuSignals.length ? investmentMenuSignals : ["Menu assets: Requires additional plan records.", "Mutual funds: Requires additional plan records.", "Common collective trusts: Requires additional plan records.", "Participant loans: Requires additional plan records."]).slice(0, 4).forEach((signal, index) => {
     const [area, ...rest] = signal.split(":");
-    tableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [82, 170], false, index % 2 === 1 ? ROW_STRIPE : undefined);
+    tableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [82, 160], false, index % 2 === 1 ? ROW_STRIPE : undefined);
   });
   roundedRect(pages[3], 42, 46, 528, 72, 12, "1 1 1");
   roundedRect(pages[3], 42, 46, 528, 72, 12, BORDER, true);
@@ -596,16 +585,15 @@ function makeReport(params: URLSearchParams) {
   text(pages[4], "Benchmarking decision", 317, 222, 7.1, "F2", "1 1 1");
   roundedRect(pages[4], 424, 206, 132, 40, 12, "1 1 1");
   calendarIcon(pages[4], 438, 217, 14);
-  text(pages[4], "Schedule Call ->", 462, 221, 8, "F2", BLUE);
+  text(pages[4], "Schedule Consultation", 460, 221, 8.1, "F2", BLUE);
   addLink(pages[4], 424, 206, 132, 40, "https://calendly.com/chris_becker/retirement-plan-consultation");
   roundedRect(pages[4], 42, 62, 528, 116, 12, PANEL);
   roundedRect(pages[4], 42, 62, 528, 116, 12, BORDER, true);
   text(pages[4], "Documents that would help validate this review", 62, 144, 12, "F2", TEXT);
   paragraph(pages[4], "408(b)(2) disclosure, 404a-5 participant fee disclosure, investment lineup, service agreements, plan document/adoption agreement, recordkeeper reports, and recent committee materials.", 62, 116, 120, 8.5, 12, MUTED);
-  text(pages[4], "Need help finding the disclosures? We've prepared guides on how to find them on 20+ recordkeepers", 62, 82, 8.3, "F2", BLUE);
-  text(pages[4], "here.", 62, 68, 8.3, "F2", BLUE);
-  line(pages[4], 62, 66, 80, 66, BLUE, 0.5);
-  addLink(pages[4], 62, 65, 22, 12, "https://drive.google.com/drive/folders/1tm39-Z3cdXqaH9YXtJgzCBspN_WXMwlM?usp=drive_link");
+  text(pages[4], "Need help finding the disclosures? We've prepared guides on how to find them on 20+ recordkeepers here.", 62, 82, 8, "F2", BLUE);
+  line(pages[4], 454, 80, 470, 80, BLUE, 0.5);
+  addLink(pages[4], 452, 78, 22, 12, "https://drive.google.com/drive/folders/1tm39-Z3cdXqaH9YXtJgzCBspN_WXMwlM?usp=drive_link");
 
   header(pages[5], "Appendix And Disclosures", 6);
   text(pages[5], "Appendix: source data and important notes", 42, 680, 20, "F2", TEXT);
@@ -628,7 +616,7 @@ function makeReport(params: URLSearchParams) {
     "No conclusion is made regarding whether any fee is reasonable, any investment is prudent, or any fiduciary process is sufficient."
   ].forEach((item, index) => {
     const y = 382 - index * 27;
-    circle(pages[5], 66, y, 2, GREEN);
+    circle(pages[5], 66, y + 5, 2, GREEN);
     paragraph(pages[5], item, 76, y + 4, 120, 7.2, 9.2, TEXT);
   });
   text(pages[5], "Selected calculations", 42, 230, 13, "F2", TEXT);

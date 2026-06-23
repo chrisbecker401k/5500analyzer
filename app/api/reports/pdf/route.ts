@@ -334,7 +334,9 @@ function providerCard(page: CommandPage, label: string, value: string, helper: s
   roundedRect(page, x, y, width, 86, 10, BORDER, true);
   roundedRect(page, x, y, width, 4, 2, accent);
   text(page, label.toUpperCase(), x + 10, y + 62, 7, "F2", "0.640 0.650 0.670");
-  wrap(value, Math.max(18, Math.floor(width / 4.5))).slice(0, 2).forEach((lineText, index) => text(page, lineText, x + 10, y + 42 - index * 11, 9, "F2", TEXT));
+  const valueLines = wrap(value, Math.max(22, Math.floor((width - 18) / 3.95))).slice(0, 3);
+  const valueSize = value.length > 28 ? 7.7 : value.length > 21 ? 8.2 : 9;
+  valueLines.forEach((lineText, index) => text(page, lineText, x + 10, y + 42 - index * 9.5, valueSize, "F2", TEXT));
   text(page, helper, x + 10, y + 12, 7.5, "F1", MUTED);
 }
 
@@ -376,6 +378,15 @@ function topicBullet(page: CommandPage, number: string, title: string, body: str
   text(page, number, x + 6.1, y - 0.4, 6.8, "F2", "1 1 1");
   text(page, title, x + 24, y + 1, 8, "F2", TEXT);
   paragraph(page, body, x + 24, y - 10, 128, 7, 9, MUTED);
+}
+
+function bridgeMetric(page: CommandPage, label: string, value: string | null, x: number, y: number, width: number, color: string, direction: "start" | "positive" | "negative" | "end") {
+  const parsed = numberValue(value);
+  const valueText = direction === "negative" && parsed !== null ? `-${compactMoney(String(Math.abs(parsed)))}` : compactMoney(value);
+  roundedRect(page, x, y, width, 42, 8, "0.965 0.973 0.984");
+  roundedRect(page, x, y, 4, 42, 2, color);
+  text(page, label.toUpperCase(), x + 12, y + 25, 6.6, "F2", "0.640 0.650 0.670");
+  text(page, valueText, x + 12, y + 9, 11, "F2", TEXT);
 }
 
 function buildPdf(pages: CommandPage[]) {
@@ -481,14 +492,14 @@ function makeReport(params: URLSearchParams) {
     ["Fee visibility", "Visible", "Schedule C identifies direct advisory and recordkeeping compensation; a complete fee review should still include service agreements and participant fee disclosures."],
     ["Plan design", "Opportunity", "The plan has auto-enrollment and permits pretax and after-tax contributions, but no matching or discretionary employer contributions were made."]
   ].forEach((row, index) => tableRow(pages[1], row, 42, 464 - index * 28, [110, 82, 334], false, index % 2 === 1 ? ROW_STRIPE : undefined));
-  roundedRect(pages[1], 42, 88, 528, 242, 12, PANEL);
-  roundedRect(pages[1], 42, 88, 528, 242, 12, BORDER, true);
-  roundedRect(pages[1], 42, 88, 5, 242, 2.5, ORANGE);
-  text(pages[1], "Top 3 items to validate with plan records", 60, 292, 13, "F2", TEXT);
-  paragraph(pages[1], "These are not conclusions from the filing. They are high-value discussion points for a plan sponsor or committee.", 60, 270, 112, 7.5, 10, MUTED);
-  topicBullet(pages[1], "1", "Fee documentation", "Confirm direct and indirect compensation using 408(b)(2), 404a-5, fund expenses, and service agreements.", 60, 236);
-  topicBullet(pages[1], "2", "Participant behavior", "Review terminated balances, loan usage, distribution activity, and education opportunities.", 60, 194);
-  topicBullet(pages[1], "3", "Provider accountability", "Clarify which provider owns each part of the annual fiduciary process and how decisions are documented.", 60, 152);
+  roundedRect(pages[1], 42, 118, 528, 202, 12, PANEL);
+  roundedRect(pages[1], 42, 118, 528, 202, 12, BORDER, true);
+  roundedRect(pages[1], 42, 118, 5, 202, 2.5, ORANGE);
+  text(pages[1], "Top 3 items to validate with plan records", 60, 284, 13, "F2", TEXT);
+  paragraph(pages[1], "These are not conclusions from the filing. They are high-value discussion points for a plan sponsor or committee.", 60, 262, 112, 7.5, 10, MUTED);
+  topicBullet(pages[1], "1", "Fee documentation", "Confirm direct and indirect compensation using 408(b)(2), 404a-5, fund expenses, and service agreements.", 60, 232);
+  topicBullet(pages[1], "2", "Participant behavior", "Review terminated balances, loan usage, distribution activity, and education opportunities.", 60, 196);
+  topicBullet(pages[1], "3", "Provider accountability", "Clarify which provider owns each part of the annual fiduciary process and how decisions are documented.", 60, 160);
 
   header(pages[2], "Form 5500 Snapshot", 3);
   text(pages[2], "Plan economics and cash flow", 42, 680, 20, "F2", TEXT);
@@ -496,14 +507,17 @@ function makeReport(params: URLSearchParams) {
   roundedRect(pages[2], 42, 374, 252, 226, 12, "1 1 1");
   roundedRect(pages[2], 42, 374, 252, 226, 12, BORDER, true);
   text(pages[2], "Asset bridge", 58, 574, 12, "F2", TEXT);
-  [["Beginning assets", params.get("beginningAssets"), BLUE], ["Investment income", params.get("netInvestmentGain"), GREEN], ["Net cash flow", params.get("netCashFlow"), ORANGE], ["Ending net assets", params.get("endingAssets"), TEXT]].forEach((item, index) => {
-    const y = 532 - index * 40;
-    text(pages[2], item[0]!, 60, y, 7.2, "F2", MUTED);
-    roundedRect(pages[2], 158, y - 10, 62, 18, 4, "0.965 0.973 0.984");
-    roundedRect(pages[2], 158, y - 10, Math.max(8, Math.min(62, (Math.abs(numberValue(item[1]) ?? 0) / (numberValue(params.get("endingAssets")) || 1)) * 62)), 18, 4, item[2]!);
-    text(pages[2], compactMoney(item[1]!), 248, y, 7.2, "F2", TEXT);
-  });
-  text(pages[2], "Net cash flow = contributions less benefits paid and administrative expenses.", 60, 386, 6.8, "F1", "0.660 0.680 0.700");
+  bridgeMetric(pages[2], "Beginning assets", params.get("beginningAssets"), 60, 516, 96, BLUE, "start");
+  bridgeMetric(pages[2], "Investment income", params.get("netInvestmentGain"), 174, 516, 96, GREEN, "positive");
+  bridgeMetric(pages[2], "Net cash flow", params.get("netCashFlow"), 60, 454, 96, ORANGE, (numberValue(params.get("netCashFlow")) ?? 0) < 0 ? "negative" : "positive");
+  bridgeMetric(pages[2], "Ending net assets", params.get("endingAssets"), 174, 454, 96, TEXT, "end");
+  line(pages[2], 158, 536, 171, 536, BORDER, 1);
+  text(pages[2], "+", 162, 530, 11, "F2", GREEN);
+  line(pages[2], 108, 510, 108, 500, BORDER, 1);
+  line(pages[2], 108, 500, 222, 500, BORDER, 1);
+  line(pages[2], 222, 500, 222, 496, BORDER, 1);
+  text(pages[2], (numberValue(params.get("netCashFlow")) ?? 0) < 0 ? "-" : "+", 162, 482, 11, "F2", ORANGE);
+  text(pages[2], "Net cash flow reflects contributions less benefits paid and administrative expenses.", 60, 392, 6.8, "F1", "0.660 0.680 0.700");
   roundedRect(pages[2], 314, 374, 256, 226, 12, "1 1 1");
   roundedRect(pages[2], 314, 374, 256, 226, 12, BORDER, true);
   text(pages[2], `${planYear} sources and uses`, 330, 574, 12, "F2", TEXT);
@@ -536,24 +550,24 @@ function makeReport(params: URLSearchParams) {
   metricCard(pages[3], "Recordkeeper", money(params.get("recordkeepingFees")), "", 234, 326, 146, LIGHT_BLUE);
   metricCard(pages[3], "Advisor", money(params.get("advisoryFees")), "", 408, 326, 146, ORANGE);
   text(pages[3], "Plan design signals", 42, 282, 13, "F2", TEXT);
-  tableRow(pages[3], ["Feature", "Observed in filing / audited notes"], 42, 252, [88, 164], true);
+  tableRow(pages[3], ["Feature", "Observed in filing / audited notes"], 42, 252, [82, 170], true);
   (planDesignSignals.length ? planDesignSignals : ["Eligibility: Requires additional plan records.", "Auto-enrollment: Requires additional plan records.", "Employer contributions: Requires additional plan records.", "Vesting: Requires additional plan records."]).slice(0, 4).forEach((signal, index) => {
     const [feature, ...rest] = signal.split(":");
-    tableRow(pages[3], [feature || "Feature", rest.join(":").trim() || signal], 42, 230 - index * 28, [88, 164], false, index % 2 === 1 ? ROW_STRIPE : undefined);
+    tableRow(pages[3], [feature || "Feature", rest.join(":").trim() || signal], 42, 230 - index * 28, [82, 170], false, index % 2 === 1 ? ROW_STRIPE : undefined);
   });
   text(pages[3], "Investment menu signals", 314, 282, 13, "F2", TEXT);
-  tableRow(pages[3], ["Area", "Observed in filing / audited notes"], 314, 252, [88, 164], true);
+  tableRow(pages[3], ["Area", "Observed in filing / audited notes"], 314, 252, [82, 170], true);
   (investmentMenuSignals.length ? investmentMenuSignals : ["Menu assets: Requires additional plan records.", "Mutual funds: Requires additional plan records.", "Common collective trusts: Requires additional plan records.", "Participant loans: Requires additional plan records."]).slice(0, 4).forEach((signal, index) => {
     const [area, ...rest] = signal.split(":");
-    tableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [88, 164], false, index % 2 === 1 ? ROW_STRIPE : undefined);
+    tableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [82, 170], false, index % 2 === 1 ? ROW_STRIPE : undefined);
   });
-  roundedRect(pages[3], 42, 38, 528, 76, 12, "1 1 1");
-  roundedRect(pages[3], 42, 38, 528, 76, 12, BORDER, true);
-  roundedRect(pages[3], 42, 38, 5, 76, 2.5, BLUE);
-  text(pages[3], "High-value topics for committee discussion", 62, 94, 12, "F2", TEXT);
+  roundedRect(pages[3], 42, 46, 528, 72, 12, "1 1 1");
+  roundedRect(pages[3], 42, 46, 528, 72, 12, BORDER, true);
+  roundedRect(pages[3], 42, 46, 5, 72, 2.5, BLUE);
+  text(pages[3], "High-value topics for committee discussion", 62, 98, 12, "F2", TEXT);
   ["Are direct and indirect fees documented, benchmarked, and tied to service value?", "Does the plan design support recruiting, retention, and participant outcomes?", "Are terminated participant balances, loans, and distribution activity monitored as part of the annual fiduciary process?"].forEach((item, index) => {
-    circle(pages[3], 66, 75 - index * 13, 2, GREEN);
-    text(pages[3], item, 78, 72 - index * 13, 6.6, "F1", TEXT);
+    circle(pages[3], 66, 79 - index * 13, 2, GREEN);
+    text(pages[3], item, 78, 76 - index * 13, 6.6, "F1", TEXT);
   });
 
   header(pages[4], "From Insight To Action", 5);
@@ -561,7 +575,7 @@ function makeReport(params: URLSearchParams) {
   paragraph(pages[4], "Public filings are a strong starting point, but they do not show the full fiduciary process. The next step is to compare the Form 5500 snapshot against the plan's actual provider disclosures, plan documents, investment policy, committee records, participant experience, and business objectives.", 42, 640, 136, 9.5, 14);
   [["01", "Confirm", "Validate Form 5500 observations against provider reports, service agreements, fee disclosures, and plan documents."], ["02", "Benchmark", "Evaluate fees, services, investment menu structure, participant behavior, and governance practices against plan size and complexity."], ["03", "Prioritize", "Identify the few actions that matter most and assign accountability across advisor, recordkeeper, auditor, payroll/TPA, and committee."]].forEach((item, index) => {
     const x = 42 + index * 184;
-    const boxY = 410;
+    const boxY = 442;
     const accent = index === 0 ? GREEN : index === 1 ? LIGHT_BLUE : ORANGE;
     roundedRect(pages[4], x, boxY, 160, 124, 12, "1 1 1");
     roundedRect(pages[4], x, boxY, 160, 124, 12, BORDER, true);
@@ -570,21 +584,20 @@ function makeReport(params: URLSearchParams) {
     text(pages[4], item[1], x + 18, boxY + 68, 15, "F2", TEXT);
     paragraph(pages[4], item[2], x + 18, boxY + 46, 39, 7.4, 9.5, MUTED);
   });
-  roundedRect(pages[4], 42, 196, 528, 186, 16, BLUE);
-  svgLogo(pages[4], "white", 74, 324, 116);
-  text(pages[4], "Recommended next step: Retirement Plan Consultation", 74, 296, 16.5, "F2", "1 1 1");
-  paragraph(pages[4], "Everhart Advisors will walk through the three highest-priority observations, identify needed documents, and determine whether deeper fee, provider, or fiduciary process benchmarking is worth pursuing.", 74, 268, 116, 7.6, 9.8, "1 1 1");
-  roundedRect(pages[4], 78, 212, 106, 24, 12, "0.180 0.490 0.700");
-  text(pages[4], "3 priority observations", 92, 220, 7.3, "F2", "1 1 1");
-  roundedRect(pages[4], 200, 212, 112, 24, 12, "0.180 0.490 0.700");
-  text(pages[4], "Missing document list", 218, 220, 7.3, "F2", "1 1 1");
-  roundedRect(pages[4], 328, 212, 112, 24, 12, "0.180 0.490 0.700");
-  text(pages[4], "Benchmarking decision", 344, 220, 7.3, "F2", "1 1 1");
-  roundedRect(pages[4], 456, 206, 98, 38, 12, "1 1 1");
-  calendarIcon(pages[4], 468, 216, 16);
-  text(pages[4], "Schedule", 492, 225, 7.4, "F2", BLUE);
-  text(pages[4], "Consultation ->", 492, 215, 7.4, "F2", BLUE);
-  addLink(pages[4], 456, 206, 98, 38, "https://calendly.com/chris_becker/retirement-plan-consultation");
+  roundedRect(pages[4], 42, 196, 528, 178, 16, BLUE);
+  svgLogo(pages[4], "white", 74, 318, 112);
+  text(pages[4], "Recommended next step: Retirement Plan Consultation", 74, 292, 16.5, "F2", "1 1 1");
+  paragraph(pages[4], "Everhart Advisors will walk through the three highest-priority observations, identify needed documents, and determine whether deeper fee, provider, or fiduciary process benchmarking is worth pursuing.", 74, 265, 104, 7.6, 9.8, "1 1 1");
+  roundedRect(pages[4], 72, 214, 102, 24, 12, "0.180 0.490 0.700");
+  text(pages[4], "3 priority observations", 86, 222, 7.1, "F2", "1 1 1");
+  roundedRect(pages[4], 184, 214, 108, 24, 12, "0.180 0.490 0.700");
+  text(pages[4], "Missing document list", 201, 222, 7.1, "F2", "1 1 1");
+  roundedRect(pages[4], 302, 214, 108, 24, 12, "0.180 0.490 0.700");
+  text(pages[4], "Benchmarking decision", 317, 222, 7.1, "F2", "1 1 1");
+  roundedRect(pages[4], 424, 206, 132, 40, 12, "1 1 1");
+  calendarIcon(pages[4], 438, 217, 14);
+  text(pages[4], "Schedule Call ->", 462, 221, 8, "F2", BLUE);
+  addLink(pages[4], 424, 206, 132, 40, "https://calendly.com/chris_becker/retirement-plan-consultation");
   roundedRect(pages[4], 42, 62, 528, 116, 12, PANEL);
   roundedRect(pages[4], 42, 62, 528, 116, 12, BORDER, true);
   text(pages[4], "Documents that would help validate this review", 62, 144, 12, "F2", TEXT);
@@ -597,14 +610,14 @@ function makeReport(params: URLSearchParams) {
   header(pages[5], "Appendix And Disclosures", 6);
   text(pages[5], "Appendix: source data and important notes", 42, 680, 20, "F2", TEXT);
   paragraph(pages[5], "The items below summarize the primary source documents used to prepare this review and the limitations of a Form 5500-based analysis.", 42, 644, 128, 8.5, 12);
-  tableRow(pages[5], ["Source item", "Where used in this review"], 42, 620, [190, 336], true);
+  tableRow(pages[5], ["Source item", "Where used in this review"], 42, 606, [190, 336], true);
   [
     ["Form 5500 basic plan information", "Plan sponsor, EIN, plan number, plan year, participant counts, plan characteristics, and attached schedules."],
     ["Schedule H and financial statements", "Net assets, investments, contributions, distributions, administrative expenses, participant loans, and annual change in net assets."],
     ["Schedule C", "Reported service providers and direct or indirect compensation items visible in the filing."],
     ["Schedule D and asset schedules", "Common collective trust, stable value, mutual fund, and plan investment information when visible."],
     ["Plan notes", "Eligibility, match, after-tax contributions, loans, hardship withdrawals, and plan operation descriptions when available."]
-  ].forEach((row, index) => tableRow(pages[5], row, 42, 598 - index * 28, [190, 336], false, index % 2 === 1 ? ROW_STRIPE : undefined));
+  ].forEach((row, index) => tableRow(pages[5], row, 42, 584 - index * 28, [190, 336], false, index % 2 === 1 ? ROW_STRIPE : undefined));
   roundedRect(pages[5], 42, 288, 528, 148, 12, PANEL);
   roundedRect(pages[5], 42, 288, 528, 148, 12, BORDER, true);
   text(pages[5], "Important limitations", 62, 410, 13, "F2", TEXT);
@@ -615,8 +628,8 @@ function makeReport(params: URLSearchParams) {
     "No conclusion is made regarding whether any fee is reasonable, any investment is prudent, or any fiduciary process is sufficient."
   ].forEach((item, index) => {
     const y = 382 - index * 27;
-    circle(pages[5], 64, y, 2, GREEN);
-    paragraph(pages[5], item, 82, y + 4, 114, 7.2, 9.2, TEXT);
+    circle(pages[5], 66, y, 2, GREEN);
+    paragraph(pages[5], item, 76, y + 4, 120, 7.2, 9.2, TEXT);
   });
   text(pages[5], "Selected calculations", 42, 230, 13, "F2", TEXT);
   tableRow(pages[5], ["Calculation", "Formula"], 42, 202, [160, 366], true);
@@ -626,7 +639,7 @@ function makeReport(params: URLSearchParams) {
     ["Direct admin fee bps", "Reported administrative fees / ending net assets x 10,000"],
     ["Net cash flow", "Total contributions - benefits paid - administrative fees"]
   ].forEach((row, index) => tableRow(pages[5], row, 42, 180 - index * 28, [160, 366], false, index % 2 === 1 ? ROW_STRIPE : undefined));
-  text(pages[5], "Prepared by Everhart Advisors. External discussion materials. Not intended as legal or tax advice.", 42, 42, 6.8, "F1", "0.620 0.620 0.620");
+  text(pages[5], "Prepared by Everhart Advisors. External discussion materials. Not intended as legal or tax advice.", 42, 48, 6.8, "F1", "0.620 0.620 0.620");
 
   return pages;
 }

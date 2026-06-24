@@ -20,6 +20,13 @@ function matchMoney(text: string, pattern: RegExp) {
   return cleanMoney(text.match(pattern)?.[1]);
 }
 
+function matchMoneyFromLine(text: string, label: RegExp) {
+  const matcher = new RegExp(`${label.source}\\s+\\$?\\s*(\\(?-?[\\d,]{1,12}\\)?)`, label.flags.replace("g", ""));
+  const value = text.match(matcher)?.[1];
+  if (!value) return null;
+  return cleanMoney(value.replace(/[()]/g, (match) => match === "(" ? "-" : ""));
+}
+
 function matchMoneyAfter(text: string, label: RegExp) {
   const flags = label.flags.includes("g") ? label.flags : `${label.flags}g`;
   const matcher = new RegExp(label.source, flags);
@@ -52,8 +59,11 @@ function titleCasePlan(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .replace(/\bInc\.?/g, "Inc.")
     .replace(/\bLlc\b/g, "LLC")
+    .replace(/\bLlp\b/g, "LLP")
     .replace(/\bLtd\b/g, "Ltd.")
     .replace(/\bAdp\b/g, "ADP")
+    .replace(/\bGbq\b/g, "GBQ")
+    .replace(/Cliftonlarsonallen/g, "CliftonLarsonAllen")
     .replace(/401\(K\)/g, "401(k)")
     .replace(/Inc\.\./g, "Inc.");
 }
@@ -67,7 +77,12 @@ function cleanProviderName(value: string | undefined) {
     .filter((chunk) => /[A-Z]/.test(chunk) && !/^(YES|NO|0|1|ABCDEF)/i.test(chunk));
   const afterCheckbox = checkboxChunks.at(-1) || trimmed.match(/(?:^|.*\bX\s+)([A-Z][A-Z0-9 &'.,-]+)$/)?.[1];
   const afterNumber = (afterCheckbox || trimmed).match(/(?:^|.*\b\d+\s+)([A-Z][A-Z0-9 &'.,-]+)$/)?.[1];
-  const cleaned = (afterNumber || afterCheckbox || trimmed).replace(/^X\s+/i, "").trim();
+  const cleaned = (afterNumber || afterCheckbox || trimmed)
+    .replace(/^X\s+/i, "")
+    .replace(/^0\s+X\s+/i, "")
+    .replace(/\s+EVERHA$/i, "")
+    .replace(/\s+(?:STREET|DRIVE|ROAD|RD|AVE|AVENUE|BLVD|BOULEVARD|SUITE|STE)\b.*$/i, "")
+    .trim();
   if (!cleaned || /ABCDEFGHI|123456789/.test(cleaned)) return null;
   return titleCasePlan(cleaned);
 }
@@ -88,6 +103,64 @@ function afterPatternNumbers(text: string, pattern: RegExp, limit = 48) {
   const match = pattern.exec(text);
   if (!match || match.index === undefined) return [];
   return allNumbers(text.slice(match.index + match[0].length, match.index + match[0].length + 1600)).slice(0, limit);
+}
+
+function financialStatementBlock(text: string, title: RegExp, required: RegExp, maxLength = 3600) {
+  const flags = title.flags.includes("g") ? title.flags : `${title.flags}g`;
+  const matcher = new RegExp(title.source, flags);
+  const candidates = [...text.matchAll(matcher)]
+    .map((match) => {
+      const index = match.index ?? 0;
+      return text.slice(index, index + maxLength);
+    })
+    .filter((block) => required.test(block));
+  return candidates.at(-1) || "";
+}
+
+function auditedStatementValues(text: string) {
+  const changes = financialStatementBlock(
+    text,
+    /Statements?\s+of\s+Changes?\s+in\s+Net\s+Assets\s+Available\s+for\s+Benefits/i,
+    /Total\s+contributions|Benefits\s+paid|Net\s+(?:increase|change)/i,
+    4200
+  );
+  const netAssets = financialStatementBlock(
+    text,
+    /Statements?\s+of\s+Net\s+Assets\s+Available\s+for\s+Benefits/i,
+    /Net\s+Assets\s+Available\s+for\s+Benefits|Notes\s+receivable\s+from\s+participants/i,
+    3200
+  );
+
+  const netAssetsAvailable = matchMoneyFromLine(netAssets, /Net\s+Assets\s+Available\s+for\s+Benefits/i);
+  const beginningFromChanges = matchMoneyFromLine(changes, /Beginning\s+of\s+year/i);
+  const endingFromChanges = matchMoneyFromLine(changes, /End\s+of\s+year/i);
+  const totalInvestmentIncome = matchMoneyFromLine(changes, /Total\s+Investment\s+Income/i);
+  const participantLoanInterest = matchMoneyFromLine(changes, /(?:Interest\s+(?:income\s+)?(?:on|from)\s+)?notes\s+receivable\s+from\s+participants/i);
+  const contributionBlock = changes.match(/Contributions?:?\s+([\s\S]{0,900}?(?:Total\s+contributions?\s+\$?\s*\(?-?[\d,]{1,12}\)?|Total\s+additions))/i)?.[1] || "";
+  const employerContributions = matchMoneyFromLine(contributionBlock, /Employer(?:'?s)?(?:\s+contributions?)?/i);
+  const participantContributions = matchMoneyFromLine(contributionBlock, /(?:Participants?|Employees?)(?:'|’)?(?:\s+contributions?)?/i);
+  const rollovers = matchMoneyFromLine(contributionBlock, /Rollovers?/i);
+  const explicitTotalContributions = matchMoneyFromLine(contributionBlock, /Total\s+Contributions?/i);
+
+  return {
+    endingAssets: netAssetsAvailable || endingFromChanges,
+    beginningAssets: beginningFromChanges,
+    participantLoans: matchMoneyFromLine(netAssets, /Notes\s+receivable\s+from\s+participants/i),
+    employerContributions,
+    participantContributions,
+    rollovers,
+    totalContributions: explicitTotalContributions ?? (
+      employerContributions !== null || participantContributions !== null || rollovers !== null
+        ? (employerContributions ?? 0) + (participantContributions ?? 0) + (rollovers ?? 0)
+        : null
+    ),
+    benefitsPaid: matchMoneyFromLine(changes, /Benefits\s+paid(?:\s+to\s+participants)?/i),
+    administrativeExpenses: matchMoneyFromLine(changes, /Administrative\s+(?:fees|expenses)/i),
+    netAssetChange: matchMoneyFromLine(changes, /Net\s+(?:increase|change|increase\s+\(decrease\))(?:\s+in\s+Net\s+Assets\s+Available\s+for\s+Benefits)?/i),
+    netInvestmentGain:
+      matchMoneyFromLine(changes, /Net\s+investment\s+gain/i) ||
+      (totalInvestmentIncome !== null || participantLoanInterest !== null ? (totalInvestmentIncome ?? 0) + (participantLoanInterest ?? 0) : null)
+  };
 }
 
 function scheduleHPage15Values(flatText: string) {
@@ -205,7 +278,59 @@ function providerByRole(flatText: string, role: string) {
   return cleanProviderName(match?.[1]);
 }
 
+type ScheduleCLine2Provider = {
+  name: string;
+  codes: number[];
+  role: string;
+  fee: number | null;
+};
+
+function scheduleCLine2Providers(flatText: string) {
+  const block = flatText.match(/2\.\s+Information on Other Service Providers[\s\S]{0,5200}?(?=Part I\s+Service Provider Information\s+\(continued\)\s+3\.|3\.\s+If you reported|$)/i)?.[0] || "";
+  if (!block) return [] as ScheduleCLine2Provider[];
+  const firstProviderStart = block.match(/\s1\s+(?=[A-Z][A-Z0-9 &'.,/-]+(?:\s+\d{2}-\d{7}|\s+\d{3,5}))/i)?.index;
+  const entriesBlock = firstProviderStart === undefined ? block : block.slice(firstProviderStart + 1);
+
+  const roleWords = "RETAINED BY EMPLOYER|SERVICE PROVIDER|INVESTMENT\\s*\\/\\s*FIN\\s*ANCIAL\\s+ADVI|INVESTMENT ADVISOR|RECORD\\s*KEEPER|RECORDKEEPER|ACCOUNTANT\\s*\\/\\s*A\\s*UDITOR|AUDITOR|ADVISOR";
+  const entryRegex = new RegExp(
+    `(?:^|\\s|X\\s)(?:1\\s+)?([A-Z][A-Z0-9 &'.,\\/-]{2,}?)(?:\\s+\\d{2}-\\d{7}|\\s+\\d{3,5}\\s+[A-Z0-9 .,#'\\/-]+?)\\s+((?:\\d{1,2}\\s+){1,7})(?:(?:${roleWords})\\s+)?(-?\\d{1,8})\\s+X`,
+    "gi"
+  );
+
+  return [...entriesBlock.matchAll(entryRegex)].flatMap((match) => {
+    const name = cleanProviderName(match[1]);
+    const codes = match[2].trim().split(/\s+/).map(Number).filter(Number.isFinite);
+    const roleContext = entriesBlock.slice(Math.max(0, (match.index ?? 0) - 20), (match.index ?? 0) + match[0].length);
+    if (!name || codes.length === 0) return [];
+    return [{
+      name,
+      codes,
+      role: roleContext,
+      fee: safeAbs(cleanMoney(match[3]))
+    }];
+  });
+}
+
+function providerFromScheduleCLine2(providers: ScheduleCLine2Provider[], kind: "recordkeeper" | "advisor" | "auditor") {
+  const provider = providers.find((candidate) => {
+    if (kind === "recordkeeper") return candidate.codes.includes(64) || /RECORD\s*KEEPER|RECORDKEEPER/i.test(candidate.role);
+    if (kind === "advisor") return candidate.codes.includes(27) || /EVERHART|MORGAN STANLEY|OXFORD|COMMONWEALTH/i.test(candidate.name);
+    return candidate.codes.includes(10) || /AUDITOR|ACCOUNTANT/i.test(candidate.role);
+  });
+  return provider || null;
+}
+
 function participantStats(flatText: string) {
+  const pageTwoTail = flatText.match(/10\s+Check\s+all\s+applicable[\s\S]{0,2600}?\sX\s+((?:\d{1,6}\s+){8,12}\d{1,6})\s+(?:[23][A-Z]\s*){2,}/i)?.[1];
+  const tailNumbers = pageTwoTail?.trim().split(/\s+/).map(Number).filter(Number.isFinite);
+  if (tailNumbers && tailNumbers.length >= 10) {
+    return {
+      beginningTotal: tailNumbers[0] || null,
+      active: tailNumbers[2] || null,
+      separated: tailNumbers[4] || null,
+      withBalances: tailNumbers[9] || null
+    };
+  }
   const sequence = flatText.match(/X\s+(\d{2,6})\s+(\d{2,6})\s+(\d{2,6})\s+0\s+(\d{1,6})\s+(\d{2,6})\s+\d{1,6}\s+\d{2,6}\s+(\d{2,6})\s+(\d{2,6})\s+\d{1,6}\s+2[A-Z0-9]/i);
   return {
     beginningTotal: cleanNumber(sequence?.[1]),
@@ -282,52 +407,68 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
   const page15 = scheduleHPage15Values(flatText);
   const page16 = scheduleHPage16Values(flatText);
   const assetTotals = scheduleAssetTotals(text);
+  const audited = auditedStatementValues(text);
 
-  const endingAssets = matchMoney(text, /NET ASSETS AVAILABLE FOR BENEFITS\s+\$?\s*([\d,]+)\s+\$?\s*[\d,]+/i) || page15?.endingAssets || null;
-  const beginningAssets = matchMoney(text, /Beginning of year\s+([\d,]+)/i) || page15?.beginningAssets || null;
-  const participantLoans = matchMoney(text, /Notes receivable from participants\s+([\d,]+)\s+[\d,]+/i) || page14?.endingParticipantLoans || null;
+  const endingAssets = audited.endingAssets || matchMoney(text, /NET ASSETS AVAILABLE FOR BENEFITS\s+\$?\s*([\d,]+)\s+\$?\s*[\d,]+/i) || page15?.endingAssets || null;
+  const beginningAssets = audited.beginningAssets || matchMoney(text, /Beginning of year\s+([\d,]+)/i) || page15?.beginningAssets || null;
+  const participantLoans = audited.participantLoans || matchMoneyFromLine(text, /Notes receivable from participants/i) || matchMoney(text, /Notes receivable from participants\s+([\d,]+)\s+[\d,]+/i) || page14?.endingParticipantLoans || null;
   const stableValueAssets = matchMoney(text, /Stable value funds\s+([\d,]+)\s+[\d,]+/i) || assetTotals.stableValueAssets;
   const mutualFundAssets = matchMoney(text, /Mutual funds\s+\$?\s*([\d,]+)\s+\$?\s*[\d,]+/i) || assetTotals.mutualFundAssets || page14?.endingMutualFundAssets || null;
   const commonCollectiveTrustAssets = assetTotals.commonCollectiveTrustAssets || page14?.endingCctAssets || null;
-  const employerContributions = matchMoney(text, /Employer\s+([\d,]+)\s+Participant/i) || page15?.employerContributions || null;
-  const participantContributions = matchMoney(text, /Participant\s+([\d,]+)\s+Rollover/i) || page15?.participantContributions || null;
-  const rollovers = matchMoney(text, /Rollover\s+([\d,]+)\s+Total contributions/i) || page15?.rollovers || null;
-  const totalContributions = matchMoney(text, /Total contributions\s+([\d,]+)/i) || page15?.totalContributions || null;
+  const employerContributions = audited.employerContributions || matchMoneyFromLine(text, /Employer contributions/i) || matchMoney(text, /Employer\s+([\d,]+)\s+Participant/i) || page15?.employerContributions || null;
+  const participantContributions = audited.participantContributions || matchMoneyFromLine(text, /Participant contributions/i) || matchMoney(text, /Participant\s+([\d,]+)\s+Rollover/i) || page15?.participantContributions || null;
+  const rollovers = audited.rollovers || matchMoneyFromLine(text, /Rollovers?/i) || matchMoney(text, /Rollover\s+([\d,]+)\s+Total contributions/i) || page15?.rollovers || null;
+  const totalContributions = audited.totalContributions || matchMoneyFromLine(text, /Total contributions/i) || matchMoney(text, /Total contributions\s+([\d,]+)/i) || page15?.totalContributions || null;
   const auditedBenefitsPaid = matchMoneyAfter(text, /Benefits paid/i);
-  const benefitsPaid = auditedBenefitsPaid || matchMoney(text, /Benefits paid to participants\s+([\d,]+)/i) || page16?.benefitsPaid || null;
+  const benefitsPaid = audited.benefitsPaid || auditedBenefitsPaid || matchMoney(text, /Benefits paid to participants\s+([\d,]+)/i) || page16?.benefitsPaid || null;
   const auditAdministrativeExpenses =
     matchMoney(text, /Administrative expenses\s+([\d,]+)\s+[\d,]+\s+Total deductions/i) ||
     matchMoney(text, /Administrative expenses paid by the Plan totaled\s+\$?\s*([\d,]+)/i) ||
     null;
   const administrativeExpenses =
+    audited.administrativeExpenses ||
+    matchMoneyFromLine(text, /Administrative expenses/i) ||
     matchMoney(text, /Administrative fees\s+([\d,]+)/i) ||
     page16?.administrativeExpenses ||
     auditAdministrativeExpenses ||
     null;
-  const netAssetChange = matchMoneyAfter(text, /Net increase/i) || matchMoney(text, /Net Change in Net Assets Available for Benefits\s+([\d,]+)/i) || page16?.netAssetChange || null;
+  const netAssetChange = audited.netAssetChange || matchMoneyAfter(text, /Net increase/i) || matchMoney(text, /Net Change in Net Assets Available for Benefits\s+([\d,]+)/i) || page16?.netAssetChange || null;
   const totalInvestmentIncome = matchMoneyAfter(text, /Total investment income/i);
   const loanInterestIncome = matchMoneyAfter(text, /Interest income on notes receivable from participants/i);
   const netInvestmentGain =
-    (totalInvestmentIncome !== null || loanInterestIncome !== null)
+    audited.netInvestmentGain ||
+    ((totalInvestmentIncome !== null || loanInterestIncome !== null)
       ? (totalInvestmentIncome ?? 0) + (loanInterestIncome ?? 0)
-      : matchMoney(text, /Net investment gain\s+([\d,]+)/i) || ((page16?.commonCollectiveTrustGain ?? 0) + (page16?.mutualFundGain ?? 0) || null);
+      : matchMoney(text, /Net investment gain\s+([\d,]+)/i) || ((page16?.commonCollectiveTrustGain ?? 0) + (page16?.mutualFundGain ?? 0) || null));
   const stats = participantStats(flatText);
   const activeParticipants = stats.active || participantCount(text, "6a(2)");
   const separatedParticipants = stats.separated || participantCount(text, "6c");
   const participantsWithBalances = stats.withBalances || participantCount(text, "6g(2)") || null;
+  const scheduleCLine2 = scheduleCLine2Providers(flatText);
+  const line2Recordkeeper = providerFromScheduleCLine2(scheduleCLine2, "recordkeeper");
+  const line2Advisor = providerFromScheduleCLine2(scheduleCLine2, "advisor");
+  const line2Auditor = providerFromScheduleCLine2(scheduleCLine2, "auditor");
   const scheduleCAdvisor = scheduleCProvider(flatText, "INVESTMENT\\s*\\/\\s*FIN\\s+ANCIAL\\s+ADVI|INVESTMENT\\s+ADVISOR|ADVISOR");
   const scheduleCRecordkeeper = scheduleCProvider(flatText, "RECORD\\s*KEEPER|RECORDKEEPER");
-  const recordkeeper = scheduleCRecordkeeper?.name || providerByRole(flatText, "RECORD\\s*KEEPER|RECORDKEEPER") || inferProvider(text, "Fidelity Investments Institutional") || inferProvider(text, "Fidelity Management Trust Company");
-  const advisor = scheduleCAdvisor?.name || providerByRole(flatText, "INVESTMENT\\s*\\/\\s*FIN\\s+ANCIAL\\s+ADVI|INVESTMENT ADVISOR") || providerByRole(flatText, "ADVISOR") || inferProvider(text, "Everhart Financial Group Inc");
+  const recordkeeper = scheduleCRecordkeeper?.name || line2Recordkeeper?.name || providerByRole(flatText, "RECORD\\s*KEEPER|RECORDKEEPER") || inferProvider(text, "Fidelity Investments Institutional") || inferProvider(text, "Fidelity Management Trust Company");
+  const advisor = scheduleCAdvisor?.name || line2Advisor?.name || providerByRole(flatText, "INVESTMENT\\s*\\/\\s*FIN\\s+ANCIAL\\s+ADVI|INVESTMENT ADVISOR") || providerByRole(flatText, "ADVISOR") || inferProvider(text, "Everhart Financial Group Inc");
   const trustee = inferTrustee(text);
-  const auditor = inferAuditorFromAuditReport(text, flatText);
+  const auditor = line2Auditor?.name || inferAuditorFromAuditReport(text, flatText);
   const recordkeepingFees = serviceProviderFee(flatText, "FIDELITY INVESTMENTS INSTITUTIONAL", "RECORDKEEPER") || matchMoney(text, /Recordkeeping fees[^\n]*2i\(3\)\s+([\d,]+)/i);
   const advisoryFees =
     scheduleCAdvisor?.fee ||
+    line2Advisor?.fee ||
     serviceProviderFee(flatText, "EVERHART FINANCIAL GROUP INC", "ADVISOR") ||
     serviceProviderFee(flatText, "OXFORD FINANCIAL GROUP LTD", "INVESTMENT ADVISOR") ||
     matchMoney(text, /Investment advisory and investment management fees[^\n]*2i\(5\)\s+([\d,]+)/i);
-  const recordkeepingFeesFromScheduleC = scheduleCRecordkeeper?.fee || recordkeepingFees;
+  const recordkeepingFeesFromScheduleC = scheduleCRecordkeeper?.fee || line2Recordkeeper?.fee || recordkeepingFees;
+  const looksLikeShiftedAssetColumn = (value: number | null) =>
+    value !== null && (value === beginningAssets || value === endingAssets || (endingAssets !== null && value > endingAssets * 0.7));
+  const normalizedEmployerContributions = looksLikeShiftedAssetColumn(employerContributions) ? null : employerContributions;
+  const normalizedParticipantContributions = looksLikeShiftedAssetColumn(participantContributions) ? null : participantContributions;
+  const normalizedBenefitsPaid = benefitsPaid !== null && endingAssets !== null && endingAssets > 1_000_000 && benefitsPaid < 100 ? null : benefitsPaid;
+  const normalizedParticipantLoans = looksLikeShiftedAssetColumn(participantLoans) ? null : participantLoans;
+  const normalizedNetInvestmentGain = netInvestmentGain !== null && endingAssets !== null && endingAssets > 1_000_000 && Math.abs(netInvestmentGain) < 100 ? null : netInvestmentGain;
   const menu = countInvestmentMenu(text);
   const extractionWarnings = [
     !endingAssets ? "Ending net assets not visible in filing" : null,
@@ -351,12 +492,12 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
     activeParticipants,
     separatedParticipants,
     totalContributions,
-    employerContributions,
-    participantContributions,
+    employerContributions: normalizedEmployerContributions,
+    participantContributions: normalizedParticipantContributions,
     rollovers,
-    benefitsPaid,
+    benefitsPaid: normalizedBenefitsPaid,
     administrativeExpenses,
-    participantLoans,
+    participantLoans: normalizedParticipantLoans,
     recordkeeper,
     advisor,
     auditor,
@@ -364,8 +505,8 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
     recordkeepingFees: recordkeepingFeesFromScheduleC,
     advisoryFees,
     auditAdministrativeExpenses,
-    investmentGain: netInvestmentGain,
-    netInvestmentGain,
+    investmentGain: normalizedNetInvestmentGain,
+    netInvestmentGain: normalizedNetInvestmentGain,
     stableValueAssets,
     commonCollectiveTrustAssets,
     mutualFundAssets,
@@ -377,10 +518,10 @@ export function extractPlanAnalysisFromText(rawText: string, fileName = "uploade
       text.match(/Vesting[\s\S]{0,500}6\s+100%/i) ? "Vesting: Company contribution vesting grades to 100% after six years of service." : "Vesting requires additional plan records."
     ],
     investmentMenuSignals: [
-      mutualFundAssets || commonCollectiveTrustAssets || participantLoans ? "Menu assets: Mutual funds, common collective trusts, and participant loans are reported." : "Menu assets require Schedule H asset schedule or provider records.",
+      mutualFundAssets || commonCollectiveTrustAssets || normalizedParticipantLoans ? "Menu assets: Mutual funds, common collective trusts, and participant loans are reported." : "Menu assets require Schedule H asset schedule or provider records.",
       mutualFundAssets ? `Mutual funds: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(mutualFundAssets)} at year-end.` : "Mutual fund assets require additional plan records.",
       commonCollectiveTrustAssets || stableValueAssets ? `Common collective trusts: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(commonCollectiveTrustAssets ?? stableValueAssets ?? 0)} at year-end, including stable value.` : "Common collective trust detail requires additional plan records.",
-      participantLoans ? `Participant loans: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(participantLoans)} at interest rates of 3.25% to 9.50%.` : "Participant loan detail requires additional plan records."
+      normalizedParticipantLoans ? `Participant loans: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(normalizedParticipantLoans)} at interest rates of 3.25% to 9.50%.` : "Participant loan detail requires additional plan records."
     ],
     status: "Ready",
     createdAt: new Date().toISOString(),

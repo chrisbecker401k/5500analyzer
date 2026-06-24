@@ -646,8 +646,7 @@ function makeReport(params: URLSearchParams) {
   roundedRect(pages[4], 302, 226, 108, 24, 12, "0.180 0.490 0.700");
   text(pages[4], "Benchmarking decision", 317, 234, 7.1, "F2", "1 1 1");
   roundedRect(pages[4], 424, 218, 132, 40, 12, "1 1 1");
-  calendarIcon(pages[4], 438, 229, 14);
-  text(pages[4], "Schedule Consultation", 460, 233, 8.1, "F2", BLUE);
+  text(pages[4], "Schedule Consultation", 438, 233, 8.8, "F2", BLUE);
   addLink(pages[4], 424, 218, 132, 40, "https://calendly.com/chris_becker/retirement-plan-consultation");
   roundedRect(pages[4], 42, 62, 528, 116, 12, PANEL);
   roundedRect(pages[4], 42, 62, 528, 116, 12, BORDER, true);

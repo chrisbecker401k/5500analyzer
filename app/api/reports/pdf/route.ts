@@ -306,13 +306,13 @@ function svgIcon(page: CommandPage, kind: "calendar", x: number, y: number, widt
 }
 
 function calendarIcon(page: CommandPage, x: number, y: number, size: number) {
-  roundedRect(page, x, y, size, size, 2.5, BLUE, true);
-  line(page, x + 2.2, y + size - 4.2, x + size - 2.2, y + size - 4.2, BLUE, 0.8);
-  line(page, x + 4.2, y + size + 1, x + 4.2, y + size - 3.1, BLUE, 1);
-  line(page, x + size - 4.2, y + size + 1, x + size - 4.2, y + size - 3.1, BLUE, 1);
+  roundedRect(page, x, y, size, size, 2.4, BLUE, true);
+  line(page, x + 2.2, y + size - 4, x + size - 2.2, y + size - 4, BLUE, 0.75);
+  line(page, x + 4.2, y + size - 1.2, x + 4.2, y + size - 3, BLUE, 1);
+  line(page, x + size - 4.2, y + size - 1.2, x + size - 4.2, y + size - 3, BLUE, 1);
   [0, 1, 2].forEach((column) => {
     [0, 1].forEach((row) => {
-      rect(page, x + 3.7 + column * 3.4, y + 3.2 + row * 3.4, 1.25, 1.25, BLUE);
+      circle(page, x + 4.2 + column * 3.2, y + 3.8 + row * 3.2, 0.5, BLUE);
     });
   });
 }
@@ -418,9 +418,9 @@ function signalTableRow(page: CommandPage, columns: string[], x: number, y: numb
   columns.forEach((column, index) => {
     const color = bold ? "1 1 1" : TEXT;
     const font = bold ? "F2" : "F1";
-    const size = bold ? 7.2 : 6.2;
-    const leading = bold ? 8 : 7.1;
-    const maxChars = Math.max(10, Math.floor((widths[index] - 16) / (bold ? 4.2 : 3.7)));
+    const size = bold ? 7.2 : 6.35;
+    const leading = bold ? 8 : 7.2;
+    const maxChars = Math.max(10, Math.floor((widths[index] - 16) / (bold ? 4.2 : 3.35)));
     const lines = bold ? [column] : wrap(column, maxChars).slice(0, 3);
     const columnX = x + 8 + widths.slice(0, index).reduce((sum, width) => sum + width, 0);
     lines.forEach((lineText, lineIndex) => {

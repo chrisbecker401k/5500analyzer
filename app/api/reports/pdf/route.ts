@@ -306,14 +306,15 @@ function svgIcon(page: CommandPage, kind: "calendar", x: number, y: number, widt
 }
 
 function calendarIcon(page: CommandPage, x: number, y: number, size: number) {
-  roundedRect(page, x, y, size, size, 3, BLUE, true);
-  line(page, x + 2, y + size - 5, x + size - 2, y + size - 5, BLUE, 0.8);
-  line(page, x + 4, y + size + 1, x + 4, y + size - 4, BLUE, 1);
-  line(page, x + size - 4, y + size + 1, x + size - 4, y + size - 4, BLUE, 1);
-  line(page, x + 4, y + 5, x + size - 4, y + 5, BLUE, 0.55);
-  line(page, x + 4, y + 9, x + size - 4, y + 9, BLUE, 0.55);
-  line(page, x + 7, y + 3, x + 7, y + size - 7, BLUE, 0.55);
-  line(page, x + 11, y + 3, x + 11, y + size - 7, BLUE, 0.55);
+  roundedRect(page, x, y, size, size, 2.5, BLUE, true);
+  line(page, x + 2.2, y + size - 4.2, x + size - 2.2, y + size - 4.2, BLUE, 0.8);
+  line(page, x + 4.2, y + size + 1, x + 4.2, y + size - 3.1, BLUE, 1);
+  line(page, x + size - 4.2, y + size + 1, x + size - 4.2, y + size - 3.1, BLUE, 1);
+  [0, 1, 2].forEach((column) => {
+    [0, 1].forEach((row) => {
+      rect(page, x + 3.7 + column * 3.4, y + 3.2 + row * 3.4, 1.25, 1.25, BLUE);
+    });
+  });
 }
 
 function everhartLogo(page: CommandPage, x: number, y: number, scale = 1, color = EVERHART_GRAY) {
@@ -399,6 +400,34 @@ function tableRow(page: CommandPage, columns: string[], x: number, y: number, wi
       text(page, lineText, x + 8 + widths.slice(0, index).reduce((sum, width) => sum + width, 0), y - lineIndex * 8, size, font, color);
     });
   });
+  rect(page, x, rowY, totalWidth, rowHeight, BORDER, true);
+  widths.slice(0, -1).reduce((cursor, width) => {
+    const next = cursor + width;
+    line(page, next, rowY, next, rowY + rowHeight, BORDER, 0.5);
+    return next;
+  }, x);
+}
+
+function signalTableRow(page: CommandPage, columns: string[], x: number, y: number, widths: number[], bold = false, background?: string) {
+  const rowHeight = bold ? 22 : 28;
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+  const rowY = bold ? y - 10 : y - 16;
+  if (bold) rect(page, x, rowY, totalWidth, rowHeight, BLUE);
+  if (!bold && background) rect(page, x, rowY, totalWidth, rowHeight, background);
+
+  columns.forEach((column, index) => {
+    const color = bold ? "1 1 1" : TEXT;
+    const font = bold ? "F2" : "F1";
+    const size = bold ? 7.2 : 6.2;
+    const leading = bold ? 8 : 7.1;
+    const maxChars = Math.max(10, Math.floor((widths[index] - 16) / (bold ? 4.2 : 3.7)));
+    const lines = bold ? [column] : wrap(column, maxChars).slice(0, 3);
+    const columnX = x + 8 + widths.slice(0, index).reduce((sum, width) => sum + width, 0);
+    lines.forEach((lineText, lineIndex) => {
+      text(page, lineText, columnX, y - lineIndex * leading, size, font, color);
+    });
+  });
+
   rect(page, x, rowY, totalWidth, rowHeight, BORDER, true);
   widths.slice(0, -1).reduce((cursor, width) => {
     const next = cursor + width;
@@ -572,16 +601,16 @@ function makeReport(params: URLSearchParams) {
   metricCard(pages[3], "Recordkeeper", money(params.get("recordkeepingFees")), "", 234, 326, 146, LIGHT_BLUE);
   metricCard(pages[3], "Advisor", money(params.get("advisoryFees")), "", 408, 326, 146, ORANGE);
   text(pages[3], "Plan design signals", 42, 282, 13, "F2", TEXT);
-  tableRow(pages[3], ["Feature", "Observed in filing / audited notes"], 42, 252, [100, 142], true);
+  signalTableRow(pages[3], ["Feature", "Observed in filing / audited notes"], 42, 252, [90, 164], true);
   (planDesignSignals.length ? planDesignSignals : ["Eligibility: Requires additional plan records.", "Auto-enrollment: Requires additional plan records.", "Employer contributions: Requires additional plan records.", "Vesting: Requires additional plan records."]).slice(0, 4).forEach((signal, index) => {
     const [feature, ...rest] = signal.split(":");
-    tableRow(pages[3], [feature || "Feature", rest.join(":").trim() || signal], 42, 230 - index * 28, [100, 142], false, index % 2 === 1 ? ROW_STRIPE : undefined);
+    signalTableRow(pages[3], [feature || "Feature", rest.join(":").trim() || signal], 42, 230 - index * 28, [90, 164], false, index % 2 === 1 ? ROW_STRIPE : undefined);
   });
   text(pages[3], "Investment menu signals", 314, 282, 13, "F2", TEXT);
-  tableRow(pages[3], ["Area", "Observed in filing / audited notes"], 314, 252, [100, 142], true);
+  signalTableRow(pages[3], ["Area", "Observed in filing / audited notes"], 314, 252, [90, 164], true);
   (investmentMenuSignals.length ? investmentMenuSignals : ["Menu assets: Requires additional plan records.", "Mutual funds: Requires additional plan records.", "Common collective trusts: Requires additional plan records.", "Participant loans: Requires additional plan records."]).slice(0, 4).forEach((signal, index) => {
     const [area, ...rest] = signal.split(":");
-    tableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [100, 142], false, index % 2 === 1 ? ROW_STRIPE : undefined);
+    signalTableRow(pages[3], [area || "Area", rest.join(":").trim() || signal], 314, 230 - index * 28, [90, 164], false, index % 2 === 1 ? ROW_STRIPE : undefined);
   });
   roundedRect(pages[3], 42, 46, 528, 72, 12, "1 1 1");
   roundedRect(pages[3], 42, 46, 528, 72, 12, BORDER, true);
@@ -617,7 +646,7 @@ function makeReport(params: URLSearchParams) {
   roundedRect(pages[4], 302, 226, 108, 24, 12, "0.180 0.490 0.700");
   text(pages[4], "Benchmarking decision", 317, 234, 7.1, "F2", "1 1 1");
   roundedRect(pages[4], 424, 218, 132, 40, 12, "1 1 1");
-  svgIcon(pages[4], "calendar", 438, 229, 14);
+  calendarIcon(pages[4], 438, 229, 14);
   text(pages[4], "Schedule Consultation", 460, 233, 8.1, "F2", BLUE);
   addLink(pages[4], 424, 218, 132, 40, "https://calendly.com/chris_becker/retirement-plan-consultation");
   roundedRect(pages[4], 42, 62, 528, 116, 12, PANEL);
